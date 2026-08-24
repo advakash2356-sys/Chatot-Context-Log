@@ -1,0 +1,6 @@
+{
+  "name": "NeoSapien",
+  "description": "Companion app for NeoSapien ecosystem: BLE pendant audio streaming, multi-format synthesis, speaker diarisation, deterministic task extraction, Ask Neo RAG intelligence, and hardware telemetry.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
