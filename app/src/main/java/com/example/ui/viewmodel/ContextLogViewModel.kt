@@ -6,6 +6,11 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.ai.GeminiService
 import com.example.data.ai.StructuredMeetingNotes
+import com.example.data.ai.VoiceContextType
+import com.example.data.ai.VoiceFlowEngine
+import com.example.data.ai.VoiceFlowResult
+import com.example.data.ai.VoiceTone
+import com.example.data.ai.VoiceTransform
 import com.example.data.ai.WisprContextType
 import com.example.data.ai.WisprFlowEngine
 import com.example.data.ai.WisprFlowResult
@@ -16,9 +21,11 @@ import com.example.data.audio.SpeechDictationManager
 import com.example.data.audio.TextToSpeechHelper
 import com.example.data.auth.AuthManager
 import com.example.data.auth.AuthState
+import com.example.data.calendar.DeviceCalendarManager
 import com.example.data.local.ActionItemEntity
 import com.example.data.local.AppDatabase
 import com.example.data.local.BriefingDossierEntity
+import com.example.data.local.CalendarEventEntity
 import com.example.data.local.ContextNoteEntity
 import com.example.data.local.DictionaryItemEntity
 import com.example.data.local.DocumentEntity
@@ -50,7 +57,49 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.util.Calendar
 
+enum class DictationState {
+  IDLE,
+  LISTENING,
+  VERIFICATION,
+  PROCESSING,
+  CONFIRMATION
+}
+
+enum class MainAppView {
+  CAPTURE,
+  VAULT
+}
+
+enum class VaultFilter {
+  ALL,
+  NOTES,
+  TASKS,
+  CALENDAR
+}
+
+data class RoutingToast(
+  val id: Long = System.currentTimeMillis(),
+  val message: String,
+  val noteTitle: String = "",
+  val tasksCount: Int = 0,
+  val eventTitle: String? = null
+)
+
 data class ContextLogUiState(
+  // Primary 2-view navigation & state machine
+  val activeView: MainAppView = MainAppView.CAPTURE,
+  val dictationState: DictationState = DictationState.IDLE,
+  val liveTranscript: String = "",
+  val rawVerifiedTranscript: String = "",
+  val recordingDurationSeconds: Int = 0,
+  val micAmplitude: Float = 0.1f,
+  val dictationWaveformLevels: FloatArray = floatArrayOf(0.1f, 0.1f, 0.1f, 0.1f, 0.1f),
+  val toastMessage: RoutingToast? = null,
+  val isProcessingIntelligence: Boolean = false,
+  val inlineDictationTarget: String? = null,
+  val vaultFilter: VaultFilter = VaultFilter.ALL,
+  val vaultSearchQuery: String = "",
+
   val activeTab: Int = 0,
   val todayHours: Double = 0.0,
   val targetHours: Double = 8.0,
@@ -94,7 +143,7 @@ data class ContextLogUiState(
   val lastCalendarSyncEventId: String? = null,
 
   // Theme & Cloud Backup State
-  val themeMode: ThemeMode = ThemeMode.SYSTEM,
+  val themeMode: ThemeMode = ThemeMode.DARK,
   val backupFrequency: BackupFrequency = BackupFrequency.DAILY,
   val lastBackupTime: Long = 0L,
   val lastBackupStatus: String = "Ready to backup",
@@ -113,7 +162,6 @@ data class ContextLogUiState(
   val isTransformLoading: Boolean = false,
   val isRecordingAudio: Boolean = false,
   val audioRecordingSeconds: Int = 0,
-  val micAmplitude: Float = 0.1f,
   val micErrorMessage: String? = null,
   val isExtendedContextMode: Boolean = false,
   val dictionaryItems: List<DictionaryItemEntity> = emptyList(),
@@ -122,13 +170,12 @@ data class ContextLogUiState(
   // Data Accessibility & Audio Readback State
   val isSpeaking: Boolean = false,
   val speechRate: Float = 1.0f,
-  val dictationWaveformLevels: FloatArray = floatArrayOf(0.1f, 0.1f, 0.1f, 0.1f, 0.1f),
   val dictationAnnouncement: String? = null,
   val dictationLanguage: String = "en-US",
   val fontScale: Float = 1.0f,
   val highContrastMode: Boolean = false,
 
-  // NeoSapien Companion & VoiceStudio Engine State
+  // Spatial Hardware & VoiceStudio Engine State
   val actionItems: List<ActionItemEntity> = emptyList(),
   val briefingDossiers: List<BriefingDossierEntity> = emptyList(),
   val pendantConnected: Boolean = true,
@@ -164,11 +211,43 @@ class ContextLogViewModel(application: Application) : AndroidViewModel(applicati
 
   private val appPrefs = application.getSharedPreferences("context_log_app_prefs", Context.MODE_PRIVATE)
 
+  // Two-View Architecture & Dictation State Machine
+  private val _activeView = MutableStateFlow(MainAppView.CAPTURE)
+  val activeView: StateFlow<MainAppView> = _activeView.asStateFlow()
+
+  private val _dictationState = MutableStateFlow(DictationState.IDLE)
+  val dictationState: StateFlow<DictationState> = _dictationState.asStateFlow()
+
+  private val _liveTranscript = MutableStateFlow("")
+  val liveTranscript: StateFlow<String> = _liveTranscript.asStateFlow()
+
+  private val _rawVerifiedTranscript = MutableStateFlow("")
+  val rawVerifiedTranscript: StateFlow<String> = _rawVerifiedTranscript.asStateFlow()
+
+  private val _recordingDurationSeconds = MutableStateFlow(0)
+  val recordingDurationSeconds: StateFlow<Int> = _recordingDurationSeconds.asStateFlow()
+
+  private val _toastMessage = MutableStateFlow<RoutingToast?>(null)
+  val toastMessage: StateFlow<RoutingToast?> = _toastMessage.asStateFlow()
+
+  private val _isProcessingIntelligence = MutableStateFlow(false)
+  val isProcessingIntelligence: StateFlow<Boolean> = _isProcessingIntelligence.asStateFlow()
+
+  private val _inlineDictationTarget = MutableStateFlow<String?>(null)
+  val inlineDictationTarget: StateFlow<String?> = _inlineDictationTarget.asStateFlow()
+  private var inlineCallback: ((String) -> Unit)? = null
+
+  private val _vaultFilter = MutableStateFlow(VaultFilter.ALL)
+  val vaultFilter: StateFlow<VaultFilter> = _vaultFilter.asStateFlow()
+
+  private val _vaultSearchQuery = MutableStateFlow("")
+  val vaultSearchQuery: StateFlow<String> = _vaultSearchQuery.asStateFlow()
+
   private val _themeMode = MutableStateFlow(
     try {
-      ThemeMode.valueOf(appPrefs.getString("theme_mode", ThemeMode.SYSTEM.name) ?: ThemeMode.SYSTEM.name)
+      ThemeMode.valueOf(appPrefs.getString("theme_mode", ThemeMode.DARK.name) ?: ThemeMode.DARK.name)
     } catch (e: Exception) {
-      ThemeMode.SYSTEM
+      ThemeMode.DARK
     }
   )
   val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
@@ -204,7 +283,7 @@ class ContextLogViewModel(application: Application) : AndroidViewModel(applicati
   private val _lastCalendarSyncEventId = MutableStateFlow<String?>(null)
 
   // Wispr Flow state flows
-  private val _wisprInput = MutableStateFlow("Hey um can you tell Rahul that actually wait no tell Priya that the meeting is moved from Monday to Tuesday at 4 PM and send them my email")
+  private val _wisprInput = MutableStateFlow("")
   private val _wisprContext = MutableStateFlow(WisprContextType.GENERAL)
   private val _wisprTone = MutableStateFlow(WisprTone.AUTO_CLEAN)
   private val _wisprLanguage = MutableStateFlow("English")
@@ -217,6 +296,8 @@ class ContextLogViewModel(application: Application) : AndroidViewModel(applicati
   private val _audioRecordingSeconds = MutableStateFlow(0)
   private val _isExtendedContextMode = MutableStateFlow(false)
   private var recordingJob: Job? = null
+
+  val deviceCalendarManager: DeviceCalendarManager = DeviceCalendarManager(application)
 
   init {
     val database = AppDatabase.getDatabase(application)
@@ -249,8 +330,16 @@ class ContextLogViewModel(application: Application) : AndroidViewModel(applicati
     // Connect speech recognizer partial transcripts
     viewModelScope.launch {
       speechDictationManager.partialTranscript.collect { partial ->
-        if (_isRecordingAudio.value && partial.isNotBlank()) {
-          _wisprInput.value = partial
+        if (partial.isNotBlank()) {
+          if (_inlineDictationTarget.value != null) {
+            inlineCallback?.invoke(partial)
+          }
+          if (_dictationState.value == DictationState.LISTENING) {
+            _liveTranscript.value = partial
+          }
+          if (_isRecordingAudio.value) {
+            _wisprInput.value = partial
+          }
         }
       }
     }
@@ -448,6 +537,17 @@ class ContextLogViewModel(application: Application) : AndroidViewModel(applicati
     val totalCost = db.tokenMetrics.sumOf { it.estimatedCostUsd }
 
     ContextLogUiState(
+      activeView = _activeView.value,
+      dictationState = _dictationState.value,
+      liveTranscript = _liveTranscript.value,
+      rawVerifiedTranscript = _rawVerifiedTranscript.value,
+      recordingDurationSeconds = _recordingDurationSeconds.value,
+      toastMessage = _toastMessage.value,
+      isProcessingIntelligence = _isProcessingIntelligence.value,
+      inlineDictationTarget = _inlineDictationTarget.value,
+      vaultFilter = _vaultFilter.value,
+      vaultSearchQuery = _vaultSearchQuery.value,
+
       activeTab = nav.activeTab,
       todayHours = computedTodayHours,
       targetHours = 8.0,
@@ -525,7 +625,7 @@ class ContextLogViewModel(application: Application) : AndroidViewModel(applicati
       fontScale = nav.fontScale,
       highContrastMode = nav.highContrastMode,
 
-      // NeoSapien Companion & VoiceStudio Engine
+      // Spatial Hardware & VoiceStudio Engine
       actionItems = db.actionItems,
       briefingDossiers = db.briefingDossiers,
       pendantConnected = _pendantConnected.value,
@@ -542,6 +642,242 @@ class ContextLogViewModel(application: Application) : AndroidViewModel(applicati
     started = SharingStarted.WhileSubscribed(5000),
     initialValue = ContextLogUiState()
   )
+
+  fun setActiveView(view: MainAppView) {
+    _activeView.value = view
+  }
+
+  fun setVaultFilter(filter: VaultFilter) {
+    _vaultFilter.value = filter
+  }
+
+  fun setVaultSearchQuery(query: String) {
+    _vaultSearchQuery.value = query
+  }
+
+  fun clearToastMessage() {
+    _toastMessage.value = null
+  }
+
+  fun startListeningSession() {
+    _liveTranscript.value = ""
+    _rawVerifiedTranscript.value = ""
+    _dictationState.value = DictationState.LISTENING
+    _recordingDurationSeconds.value = 0
+    _isRecordingAudio.value = true
+
+    recordingJob?.cancel()
+    recordingJob = viewModelScope.launch {
+      while (_dictationState.value == DictationState.LISTENING) {
+        delay(1000L)
+        _recordingDurationSeconds.value += 1
+      }
+    }
+
+    try {
+      mediaRecorderManager.startRecording()
+    } catch (e: Exception) {
+      android.util.Log.e("ContextLogViewModel", "MediaRecorder start error", e)
+    }
+
+    speechDictationManager.startListening(
+      initialText = "",
+      onResult = { finalTranscript ->
+        if (finalTranscript.isNotBlank()) {
+          _liveTranscript.value = finalTranscript
+          _rawVerifiedTranscript.value = finalTranscript
+        }
+      }
+    )
+  }
+
+  fun stopListeningSession() {
+    if (_dictationState.value != DictationState.LISTENING) return
+    _isRecordingAudio.value = false
+    recordingJob?.cancel()
+    recordingJob = null
+
+    try {
+      mediaRecorderManager.stopRecording()
+    } catch (e: Exception) {
+      android.util.Log.e("ContextLogViewModel", "MediaRecorder stop error", e)
+    }
+
+    val finalRecognized = speechDictationManager.stopListening()
+    val transcriptToVerify = finalRecognized.ifBlank { _liveTranscript.value }
+    _rawVerifiedTranscript.value = transcriptToVerify
+    _dictationState.value = DictationState.VERIFICATION
+  }
+
+  fun discardDictation() {
+    speechDictationManager.stopListening()
+    try { mediaRecorderManager.stopRecording() } catch (_: Exception) {}
+    recordingJob?.cancel()
+    recordingJob = null
+    _liveTranscript.value = ""
+    _rawVerifiedTranscript.value = ""
+    _dictationState.value = DictationState.IDLE
+    _isRecordingAudio.value = false
+  }
+
+  fun updateVerifiedTranscript(text: String) {
+    _rawVerifiedTranscript.value = text
+  }
+
+  fun saveAndProcessDictation(customText: String? = null) {
+    val textToProcess = (customText ?: _rawVerifiedTranscript.value).ifBlank { _liveTranscript.value }.trim()
+    if (textToProcess.isBlank()) {
+      discardDictation()
+      return
+    }
+
+    _dictationState.value = DictationState.PROCESSING
+    _isProcessingIntelligence.value = true
+
+    viewModelScope.launch {
+      try {
+        val structured = wisprEngine.processAudioOrTextToStructuredNotes(
+          rawText = textToProcess,
+          tone = WisprTone.AUTO_CLEAN
+        )
+
+        val noteTitle = structured.title.ifBlank { "Voice Note ${System.currentTimeMillis() % 10000}" }
+        val cleanSummary = structured.executiveSummary.ifBlank { textToProcess }
+
+        // 1. Save note to Room Notes table
+        val newNote = ContextNoteEntity(
+          title = noteTitle,
+          rawTranscript = textToProcess,
+          cleanText = cleanSummary,
+          executiveSummary = cleanSummary,
+          structuredNotes = structured.keyDecisions.joinToString("\n• "),
+          entryType = if (structured.calendarEvent?.hasEvent == true) EntryType.REMINDER else EntryType.LOG,
+          recordedAt = System.currentTimeMillis()
+        )
+        repository.insertNote(newNote)
+
+        // 2. Extract and route action items into Room Tasks table
+        val extractedTasks = structured.extractedTasks
+        var tasksCount = 0
+        if (extractedTasks.isNotEmpty()) {
+          val tasksToInsert = extractedTasks.map { task ->
+            ActionItemEntity(
+              title = task.title,
+              owner = task.assignee,
+              isAssignedToYou = task.assignee.equals("You", ignoreCase = true) || task.assignee.equals("Me", ignoreCase = true),
+              actionVerb = task.title.split(" ").firstOrNull() ?: "Execute",
+              dueDateFormatted = task.dueDate,
+              isCompleted = false,
+              priority = task.priority,
+              memoryId = newNote.id,
+              memoryTitle = newNote.title,
+              externalSyncTarget = "Task System",
+              externalSyncStatus = "READY"
+            )
+          }
+          repository.insertActionItems(tasksToInsert)
+          tasksCount = tasksToInsert.size
+        } else if (structured.actionItems.isNotEmpty()) {
+          val fallbackTasks = structured.actionItems.map { act ->
+            ActionItemEntity(
+              title = act,
+              owner = "You",
+              isAssignedToYou = true,
+              actionVerb = act.split(" ").firstOrNull() ?: "Execute",
+              dueDateFormatted = "Today, 5:00 PM",
+              isCompleted = false,
+              priority = "HIGH",
+              memoryId = newNote.id,
+              memoryTitle = newNote.title,
+              externalSyncTarget = "Task System",
+              externalSyncStatus = "READY"
+            )
+          }
+          repository.insertActionItems(fallbackTasks)
+          tasksCount = fallbackTasks.size
+        }
+
+        // 3. Extract and route calendar events into Room & Native Device Calendar
+        val cal = structured.calendarEvent
+        var eventTitle: String? = null
+        if (cal != null && cal.hasEvent) {
+          eventTitle = cal.title
+          val calEntity = CalendarEventEntity(
+            title = cal.title,
+            description = cal.description,
+            startTime = cal.startEpochMs,
+            endTime = cal.endEpochMs,
+            location = cal.location,
+            isSynced = true
+          )
+          repository.insertCalendarEvent(calEntity)
+          try {
+            deviceCalendarManager.insertEvent(
+              title = cal.title,
+              description = cal.description,
+              startEpochMs = cal.startEpochMs,
+              endEpochMs = cal.endEpochMs,
+              location = cal.location
+            )
+          } catch (e: Exception) {
+            android.util.Log.e("ContextLogViewModel", "Device calendar sync error", e)
+          }
+        }
+
+        _toastMessage.value = RoutingToast(
+          message = "Note, tasks & event saved to Vault",
+          noteTitle = noteTitle,
+          tasksCount = tasksCount,
+          eventTitle = eventTitle
+        )
+        _dictationState.value = DictationState.CONFIRMATION
+
+        // Auto return to IDLE after confirmation
+        delay(2200L)
+        if (_dictationState.value == DictationState.CONFIRMATION) {
+          _dictationState.value = DictationState.IDLE
+          _liveTranscript.value = ""
+          _rawVerifiedTranscript.value = ""
+        }
+      } catch (e: Exception) {
+        android.util.Log.e("ContextLogViewModel", "Error in saveAndProcessDictation", e)
+        _dictationState.value = DictationState.IDLE
+      } finally {
+        _isProcessingIntelligence.value = false
+      }
+    }
+  }
+
+  fun deleteCalendarEvent(id: String) {
+    viewModelScope.launch {
+      repository.deleteCalendarEvent(id)
+    }
+  }
+
+  fun startInlineFieldDictation(targetFieldId: String, currentText: String, onUpdate: (String) -> Unit) {
+    if (_inlineDictationTarget.value != null) {
+      stopInlineFieldDictation()
+    }
+    _inlineDictationTarget.value = targetFieldId
+    inlineCallback = onUpdate
+
+    speechDictationManager.startListening(
+      initialText = currentText,
+      onResult = { finalTranscript ->
+        inlineCallback?.invoke(finalTranscript)
+      }
+    )
+  }
+
+  fun stopInlineFieldDictation() {
+    if (_inlineDictationTarget.value == null) return
+    val finalResult = speechDictationManager.stopListening()
+    if (finalResult.isNotBlank()) {
+      inlineCallback?.invoke(finalResult)
+    }
+    _inlineDictationTarget.value = null
+    inlineCallback = null
+  }
 
   fun selectTab(tabIndex: Int) {
     if (_isRecordingAudio.value && tabIndex != 1) {
@@ -691,7 +1027,7 @@ class ContextLogViewModel(application: Application) : AndroidViewModel(applicati
       
       Akash: Agreed. I will draft the legal settlement memorandum for matter CTX-2024-08, review the NDA clauses, and schedule the follow-up client deposition for next Tuesday at 3:30 PM.
       
-      Priya: Great. Decision made: we migrate to the single-tap Wispr Flow UI with live mic waveform feedback, and auto-sync calendar reminders upon note completion. Meeting adjourned.
+      Priya: Great. Decision made: we migrate to the single-tap speech flow UI with live mic waveform feedback, and auto-sync calendar reminders upon note completion. Meeting adjourned.
     """.trimIndent()
 
     _wisprInput.value = longMeetingTranscript
@@ -883,6 +1219,18 @@ class ContextLogViewModel(application: Application) : AndroidViewModel(applicati
     }
   }
 
+  fun saveDirectTranscript(text: String, title: String = "Voice Note") {
+    if (text.isBlank()) return
+    viewModelScope.launch {
+      _isLoggingInProgress.value = true
+      repository.parseAndSaveVoiceNote(
+        rawTranscript = text,
+        syncToCalendar = false
+      )
+      _isLoggingInProgress.value = false
+    }
+  }
+
   fun toggleAudioRecording() {
     if (_isRecordingAudio.value) {
       stopAudioRecording()
@@ -927,7 +1275,7 @@ class ContextLogViewModel(application: Application) : AndroidViewModel(applicati
 
   /**
    * Transmits raw text or cached audio recording to the Gemini API
-   * and updates UI with structured meeting notes, concise summaries, and action items.
+   * and automatically routes structured meeting notes, tasks, and calendar events into Room and native calendar.
    */
   fun processAudioFileThroughGemini(audioFile: File? = null) {
     viewModelScope.launch {
@@ -941,15 +1289,93 @@ class ContextLogViewModel(application: Application) : AndroidViewModel(applicati
         audioMimeType = "audio/mp4"
       )
 
+      val noteTitle = structured.title.ifBlank { "Voice Note ${System.currentTimeMillis() % 10000}" }
+      val cleanSummary = structured.executiveSummary.ifBlank { currentText }
+
+      // 1. Save synthesized note to Room Notes table
+      val newNote = ContextNoteEntity(
+        title = noteTitle,
+        rawTranscript = currentText.ifBlank { cleanSummary },
+        cleanText = cleanSummary,
+        executiveSummary = cleanSummary,
+        structuredNotes = structured.keyDecisions.joinToString("\n• "),
+        entryType = if (structured.calendarEvent?.hasEvent == true) EntryType.REMINDER else EntryType.LOG,
+        recordedAt = System.currentTimeMillis()
+      )
+      repository.insertNote(newNote)
+
+      // 2. Extract and route action items into Room Tasks table
+      val extractedTasks = structured.extractedTasks
+      if (extractedTasks.isNotEmpty()) {
+        val tasksToInsert = extractedTasks.map { task ->
+          ActionItemEntity(
+            title = task.title,
+            owner = task.assignee,
+            isAssignedToYou = task.assignee.equals("You", ignoreCase = true) || task.assignee.equals("Me", ignoreCase = true),
+            actionVerb = task.title.split(" ").firstOrNull() ?: "Execute",
+            dueDateFormatted = task.dueDate,
+            isCompleted = false,
+            priority = task.priority,
+            memoryId = newNote.id,
+            memoryTitle = newNote.title,
+            externalSyncTarget = "Task System",
+            externalSyncStatus = "READY"
+          )
+        }
+        repository.insertActionItems(tasksToInsert)
+      } else if (structured.actionItems.isNotEmpty()) {
+        val fallbackTasks = structured.actionItems.map { act ->
+          ActionItemEntity(
+            title = act,
+            owner = "You",
+            isAssignedToYou = true,
+            actionVerb = act.split(" ").firstOrNull() ?: "Execute",
+            dueDateFormatted = "Today, 5:00 PM",
+            isCompleted = false,
+            priority = "HIGH",
+            memoryId = newNote.id,
+            memoryTitle = newNote.title,
+            externalSyncTarget = "Task System",
+            externalSyncStatus = "READY"
+          )
+        }
+        repository.insertActionItems(fallbackTasks)
+      }
+
+      // 3. Extract and route calendar events into Room & Native Device Calendar
+      val cal = structured.calendarEvent
+      if (cal != null && cal.hasEvent) {
+        val calEntity = CalendarEventEntity(
+          title = cal.title,
+          description = cal.description,
+          startTime = cal.startEpochMs,
+          endTime = cal.endEpochMs,
+          location = cal.location,
+          isSynced = true
+        )
+        repository.insertCalendarEvent(calEntity)
+        try {
+          deviceCalendarManager.insertEvent(
+            title = cal.title,
+            description = cal.description,
+            startEpochMs = cal.startEpochMs,
+            endEpochMs = cal.endEpochMs,
+            location = cal.location
+          )
+        } catch (e: Exception) {
+          android.util.Log.e("ContextLogViewModel", "Device calendar sync error", e)
+        }
+      }
+
       _wisprResult.value = WisprFlowResult(
         rawTranscript = currentText,
-        cleanText = currentText,
-        formattedText = structured.executiveSummary,
-        toneRewrittenText = structured.executiveSummary,
+        cleanText = cleanSummary,
+        formattedText = cleanSummary,
+        toneRewrittenText = cleanSummary,
         actionItems = structured.actionItems,
         structuredMeeting = structured,
         latencyMs = 120L,
-        tokenCountEstimate = (currentText.length / 4).coerceAtLeast(12)
+        tokenCountEstimate = (cleanSummary.length / 4).coerceAtLeast(12)
       )
 
       _isWisprProcessing.value = false
@@ -1012,7 +1438,7 @@ class ContextLogViewModel(application: Application) : AndroidViewModel(applicati
     appPrefs.edit().putBoolean("high_contrast", enabled).apply()
   }
 
-  // NeoSapien Deterministic Task Pipeline
+  // Deterministic Task Pipeline
   fun toggleTask(id: String, completed: Boolean) {
     viewModelScope.launch {
       repository.toggleActionItemCompletion(id, completed)
@@ -1025,7 +1451,7 @@ class ContextLogViewModel(application: Application) : AndroidViewModel(applicati
     isAssignedToYou: Boolean = true,
     dueDateFormatted: String = "Today, 5:00 PM",
     priority: String = "HIGH",
-    externalSyncTarget: String = "ClickUp",
+    externalSyncTarget: String = "Task System",
     memoryTitle: String = "Manual Action Item"
   ) {
     viewModelScope.launch {
@@ -1063,7 +1489,7 @@ class ContextLogViewModel(application: Application) : AndroidViewModel(applicati
     }
   }
 
-  // NeoSapien Vector RAG & Briefing Dossiers
+  // Vector RAG & Briefing Dossiers
   fun askRagQuestion(query: String) {
     if (query.isBlank()) return
     _ragQuery.value = query

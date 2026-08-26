@@ -69,21 +69,34 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.BriefingDossierEntity
 import com.example.data.local.ContextNoteEntity
+import com.example.ui.components.Spatial3DCard
+import com.example.ui.components.SpatialHologramCore
+import com.example.ui.theme.AcidGreen
+import com.example.ui.theme.CyberBackground
+import com.example.ui.theme.CyberSurface
+import com.example.ui.theme.CyberSurfaceVariant
+import com.example.ui.theme.ElectricCyan
+import com.example.ui.theme.GlassBorder
 import com.example.ui.theme.M3Primary
 import com.example.ui.theme.M3PrimaryContainer
+import com.example.ui.theme.NeonAmber
+import com.example.ui.theme.NeonViolet
+import com.example.ui.theme.TextMuted
+import com.example.ui.theme.TextPrimary
+import com.example.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-enum class AskNeoSection {
+enum class AskQuerySection {
     MEMORY_QUERY,
     PRE_MEETING_BRIEFINGS,
     PROMPT_EXPORT_BRIDGE
 }
 
 @Composable
-fun AskNeoTab(
+fun AskQueryTab(
     notes: List<ContextNoteEntity>,
     dossiers: List<BriefingDossierEntity>,
     ragQuery: String,
@@ -99,7 +112,7 @@ fun AskNeoTab(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var selectedSection by remember { mutableStateOf(AskNeoSection.MEMORY_QUERY) }
+    var selectedSection by remember { mutableStateOf(AskQuerySection.MEMORY_QUERY) }
 
     // Pre-Meeting Briefing target contact state
     var briefingContactTarget by remember { mutableStateOf("") }
@@ -114,49 +127,78 @@ fun AskNeoTab(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(CyberBackground)
     ) {
-        // Top Header Tabs
+        // Top Header Tabs with 3D Holographic HUD
         Surface(
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 2.dp,
+            color = CyberSurface,
+            border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(top = 12.dp, start = 16.dp, end = 16.dp, bottom = 8.dp)) {
-                Text(
-                    text = "Ask Neo • Intelligence Engine",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = "Grounding across ${notes.size} memories with zero-latency vector retrieval",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "Ask AI Assistant",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(ElectricCyan.copy(alpha = 0.15f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text("Smart Search", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = ElectricCyan)
+                            }
+                        }
+                        Text(
+                            text = "Ask questions across your ${notes.size} notes & recordings",
+                            fontSize = 11.sp,
+                            color = TextSecondary
+                        )
+                    }
+
+                    // Mini 3D Holographic Orb in header
+                    Box(modifier = Modifier.size(46.dp)) {
+                        SpatialHologramCore(
+                            amplitude = if (isGeneratingRag || isSpeaking) 0.8f else 0.15f,
+                            isInteracting = isSpeaking,
+                            colorAccent = if (isSpeaking) AcidGreen else ElectricCyan,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
                 TabRow(
                     selectedTabIndex = selectedSection.ordinal,
+                    containerColor = CyberSurfaceVariant,
+                    contentColor = ElectricCyan,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        .clip(RoundedCornerShape(12.dp))
                 ) {
                     Tab(
-                        selected = selectedSection == AskNeoSection.MEMORY_QUERY,
-                        onClick = { selectedSection = AskNeoSection.MEMORY_QUERY },
-                        text = { Text("Memory Q&A", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        selected = selectedSection == AskQuerySection.MEMORY_QUERY,
+                        onClick = { selectedSection = AskQuerySection.MEMORY_QUERY },
+                        text = { Text("Ask Notes", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (selectedSection == AskQuerySection.MEMORY_QUERY) ElectricCyan else TextSecondary) }
                     )
                     Tab(
-                        selected = selectedSection == AskNeoSection.PRE_MEETING_BRIEFINGS,
-                        onClick = { selectedSection = AskNeoSection.PRE_MEETING_BRIEFINGS },
-                        text = { Text("Meeting Dossiers", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        selected = selectedSection == AskQuerySection.PRE_MEETING_BRIEFINGS,
+                        onClick = { selectedSection = AskQuerySection.PRE_MEETING_BRIEFINGS },
+                        text = { Text("Meeting Prep", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (selectedSection == AskQuerySection.PRE_MEETING_BRIEFINGS) ElectricCyan else TextSecondary) }
                     )
                     Tab(
-                        selected = selectedSection == AskNeoSection.PROMPT_EXPORT_BRIDGE,
-                        onClick = { selectedSection = AskNeoSection.PROMPT_EXPORT_BRIDGE },
-                        text = { Text("Prompt Bridge", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        selected = selectedSection == AskQuerySection.PROMPT_EXPORT_BRIDGE,
+                        onClick = { selectedSection = AskQuerySection.PROMPT_EXPORT_BRIDGE },
+                        text = { Text("Export Prompts", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (selectedSection == AskQuerySection.PROMPT_EXPORT_BRIDGE) ElectricCyan else TextSecondary) }
                     )
                 }
             }
@@ -164,41 +206,43 @@ fun AskNeoTab(
 
         // Section Content
         when (selectedSection) {
-            AskNeoSection.MEMORY_QUERY -> {
+            AskQuerySection.MEMORY_QUERY -> {
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    // Query Input Card
+                    // 3D Spatial Query Input Card
                     item {
-                        Card(
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                            modifier = Modifier.fillMaxWidth()
+                        Spatial3DCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            accentColor = ElectricCyan
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text(
                                     text = "Ask anything about your past conversations",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    color = TextPrimary
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
 
                                 OutlinedTextField(
                                     value = ragQuery,
                                     onValueChange = onRagQueryChange,
-                                    placeholder = { Text("e.g., What did Alex quote for Apex Cloud infrastructure?", fontSize = 13.sp) },
+                                    placeholder = { Text("e.g., What did Alex quote for Apex Cloud infrastructure?", fontSize = 13.sp, color = TextMuted) },
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .testTag("rag_query_input"),
                                     shape = RoundedCornerShape(12.dp),
                                     colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = M3Primary,
-                                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                                        focusedBorderColor = ElectricCyan,
+                                        unfocusedBorderColor = GlassBorder,
+                                        focusedTextColor = TextPrimary,
+                                        unfocusedTextColor = TextPrimary,
+                                        focusedContainerColor = CyberSurfaceVariant,
+                                        unfocusedContainerColor = CyberSurfaceVariant
                                     ),
                                     minLines = 2
                                 )
@@ -216,7 +260,8 @@ fun AskNeoTab(
                                     ) {
                                         Surface(
                                             shape = RoundedCornerShape(8.dp),
-                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                            color = CyberSurfaceVariant,
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder),
                                             modifier = Modifier.clickable {
                                                 onRagQueryChange("What commitments did I make this week?")
                                             }
@@ -225,13 +270,14 @@ fun AskNeoTab(
                                                 "Commitments?",
                                                 fontSize = 11.sp,
                                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                color = ElectricCyan
                                             )
                                         }
 
                                         Surface(
                                             shape = RoundedCornerShape(8.dp),
-                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                            color = CyberSurfaceVariant,
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder),
                                             modifier = Modifier.clickable {
                                                 onRagQueryChange("Summary of legal and patent clauses discussed?")
                                             }
@@ -240,7 +286,7 @@ fun AskNeoTab(
                                                 "Patents & Legal?",
                                                 fontSize = 11.sp,
                                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                color = NeonViolet
                                             )
                                         }
                                     }
@@ -249,15 +295,15 @@ fun AskNeoTab(
                                         onClick = { onAskRag(ragQuery) },
                                         enabled = ragQuery.isNotBlank() && !isGeneratingRag,
                                         shape = RoundedCornerShape(10.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = M3Primary),
+                                        colors = ButtonDefaults.buttonColors(containerColor = ElectricCyan, contentColor = Color(0xFF07090E)),
                                         modifier = Modifier.testTag("rag_submit_btn")
                                     ) {
                                         if (isGeneratingRag) {
-                                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color(0xFF07090E), strokeWidth = 2.dp)
                                         } else {
                                             Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Ask Neo")
+                                            Text("Query AI", fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }
@@ -265,16 +311,14 @@ fun AskNeoTab(
                         }
                     }
 
-                    // RAG Answer Card
+                    // 3D Spatial RAG Answer Card
                     if (ragAnswer != null || isGeneratingRag) {
                         item {
-                            Card(
-                                shape = RoundedCornerShape(16.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                            Spatial3DCard(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .testTag("rag_answer_card")
+                                    .testTag("rag_answer_card"),
+                                accentColor = NeonViolet
                             ) {
                                 Column(modifier = Modifier.padding(16.dp)) {
                                     Row(
@@ -286,8 +330,8 @@ fun AskNeoTab(
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
-                                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = M3Primary, modifier = Modifier.size(18.dp))
-                                            Text("Neo Synthesized Answer", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = M3Primary)
+                                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = ElectricCyan, modifier = Modifier.size(18.dp))
+                                            Text("Spatial 3D Synthesis", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = ElectricCyan)
                                         }
 
                                         if (ragAnswer != null) {
@@ -296,17 +340,17 @@ fun AskNeoTab(
                                                     onClick = { onSpeakAnswer(ragAnswer) },
                                                     modifier = Modifier.size(28.dp)
                                                 ) {
-                                                    Icon(Icons.Default.VolumeUp, contentDescription = "Read aloud", modifier = Modifier.size(18.dp), tint = M3Primary)
+                                                    Icon(Icons.Default.VolumeUp, contentDescription = "Read aloud", modifier = Modifier.size(18.dp), tint = AcidGreen)
                                                 }
                                                 IconButton(
                                                     onClick = {
                                                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                                        clipboard.setPrimaryClip(ClipData.newPlainText("Neo Answer", ragAnswer))
+                                                        clipboard.setPrimaryClip(ClipData.newPlainText("AI Answer", ragAnswer))
                                                         Toast.makeText(context, "Answer copied to clipboard!", Toast.LENGTH_SHORT).show()
                                                     },
                                                     modifier = Modifier.size(28.dp)
                                                 ) {
-                                                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.outline)
+                                                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(18.dp), tint = TextSecondary)
                                                 }
                                             }
                                         }
@@ -320,15 +364,15 @@ fun AskNeoTab(
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                                         ) {
-                                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = M3Primary)
-                                            Text("Searching vector embeddings and synthesizing answer...", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = ElectricCyan)
+                                            Text("Projecting 3D vector embeddings and synthesizing answer...", fontSize = 13.sp, color = TextSecondary)
                                         }
                                     } else if (ragAnswer != null) {
                                         Text(
                                             text = ragAnswer,
                                             fontSize = 14.sp,
                                             lineHeight = 21.sp,
-                                            color = MaterialTheme.colorScheme.onSurface
+                                            color = TextPrimary
                                         )
                                     }
                                 }
@@ -392,7 +436,7 @@ fun AskNeoTab(
                 }
             }
 
-            AskNeoSection.PRE_MEETING_BRIEFINGS -> {
+            AskQuerySection.PRE_MEETING_BRIEFINGS -> {
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
@@ -603,7 +647,7 @@ ${dossier.openActionItems}
                 }
             }
 
-            AskNeoSection.PROMPT_EXPORT_BRIDGE -> {
+            AskQuerySection.PROMPT_EXPORT_BRIDGE -> {
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()

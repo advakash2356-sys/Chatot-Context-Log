@@ -172,10 +172,10 @@ fun SettingsTab(
             .padding(16.dp)
             .testTag("settings_tab")
     ) {
-        // NeoSapien BLE Hardware Telemetry & Pendant Status
+        // Spatial BLE Hardware Telemetry & Pendant Status
         item {
             Text(
-                text = "NEOSAPIEN HARDWARE & BLE TELEMETRY",
+                text = "SPATIAL HARDWARE & BLE TELEMETRY",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.sp,
@@ -210,7 +210,7 @@ fun SettingsTab(
                             )
                             Column {
                                 Text(
-                                    text = "NeoSapien Smart Pendant",
+                                    text = "Spatial Audio Pendant",
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface
@@ -781,7 +781,7 @@ fun SettingsTab(
                                 if (isSpeaking) {
                                     onStopSpeaking()
                                 } else {
-                                    onSpeakText("Hello! Chatot accessibility voice synthesis and 100 percent perfect dictation engine is active and ready.")
+                                    onSpeakText("Hello! SpatialContext accessibility voice synthesis and 100 percent perfect dictation engine is active and ready.")
                                 }
                             }
                         ) {
@@ -1293,7 +1293,7 @@ fun SettingsTab(
             Spacer(modifier = Modifier.height(20.dp))
         }
 
-        // Wispr Flow Personal Dictionary Section
+        // Speech Engine Personal Dictionary Section
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1372,7 +1372,7 @@ fun SettingsTab(
             Spacer(modifier = Modifier.height(20.dp))
         }
 
-        // Wispr Flow Snippet Expansion Section
+        // Speech Engine Snippet Expansion Section
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1727,7 +1727,7 @@ fun SettingsTab(
                         modifier = Modifier.size(20.dp)
                     )
                     Text(
-                        text = "ContextLog AI & Wispr Flow v4.5 • Adv.Akash2356@gmail.com",
+                        text = "SpatialContext Engine v4.5",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

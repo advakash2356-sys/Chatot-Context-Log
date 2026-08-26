@@ -1,6 +1,8 @@
 package com.example.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,39 +10,46 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.theme.M3OnPrimary
-import com.example.ui.theme.M3Primary
+import com.example.ui.theme.AcidGreen
+import com.example.ui.theme.CyberBackground
+import com.example.ui.theme.ElectricCyan
+import com.example.ui.theme.NeonAmber
+import com.example.ui.theme.NeonViolet
 
 @Composable
 fun TopHeader(
     onQuickCaptureClick: () -> Unit,
     pendantConnected: Boolean = true,
-    batterySoC: Int = 88
+    batterySoC: Int = 88,
+    captureStreakDays: Int = 5,
+    todayWordCount: Int = 428
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(horizontal = 20.dp, vertical = 12.dp),
+            .background(CyberBackground)
+            .statusBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -52,15 +61,18 @@ fun TopHeader(
                 modifier = Modifier
                     .size(38.dp)
                     .clip(CircleShape)
-                    .background(M3Primary),
+                    .background(
+                        Brush.linearGradient(
+                            listOf(ElectricCyan, NeonViolet)
+                        )
+                    ),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "NEO",
-                    fontWeight = FontWeight.ExtraBold,
-                    color = M3OnPrimary,
-                    fontSize = 11.sp,
-                    letterSpacing = 0.5.sp
+                Icon(
+                    imageVector = Icons.Default.Mic,
+                    contentDescription = null,
+                    tint = Color(0xFF07090E),
+                    modifier = Modifier.size(20.dp)
                 )
             }
 
@@ -70,63 +82,76 @@ fun TopHeader(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
-                        text = "NeoSapien",
-                        fontSize = 19.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        letterSpacing = (-0.5).sp
+                        text = "SpatialContext",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFF8FAFC),
+                        letterSpacing = (-0.3).sp
                     )
+
+                    // Streak Badge
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(if (pendantConnected) Color(0xFFE6F4EA) else Color(0xFFFFEBEE))
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF2E1C0A))
+                            .border(1.dp, NeonAmber.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(3.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.BluetoothConnected,
-                                contentDescription = null,
-                                modifier = Modifier.size(11.dp),
-                                tint = if (pendantConnected) Color(0xFF137333) else Color(0xFFC5221F)
-                            )
-                            Text(
-                                text = if (pendantConnected) "Pendant $batterySoC%" else "Offline",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (pendantConnected) Color(0xFF137333) else Color(0xFFC5221F)
-                            )
-                        }
+                        Text(
+                            text = "🔥 ${captureStreakDays}d streak",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NeonAmber
+                        )
                     }
                 }
-                Text(
-                    text = "Companion Intelligence & Query Bridge",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.Medium
-                )
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "On-Device Secure",
+                        fontSize = 11.sp,
+                        color = Color(0xFF94A3B8),
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = "•",
+                        fontSize = 10.sp,
+                        color = Color(0xFF64748B)
+                    )
+                    Text(
+                        text = if (pendantConnected) "Device Ready" else "Ready",
+                        fontSize = 11.sp,
+                        color = AcidGreen,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
         }
 
         Button(
             onClick = onQuickCaptureClick,
             shape = RoundedCornerShape(20.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = M3Primary),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = ElectricCyan,
+                contentColor = Color(0xFF07090E)
+            ),
             modifier = Modifier.testTag("top_header_quick_capture_button")
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Mic,
                     contentDescription = null,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(16.dp),
+                    tint = Color(0xFF07090E)
                 )
                 Text(
-                    text = "Capture",
+                    text = "Record",
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp
                 )

@@ -49,8 +49,8 @@
         android:strokeColor="#94A3B8"
         android:strokeLineCap="round" />
 
-    <!-- === POKÉMON CHARACTER (Chatot: Head with Music-Note Crest, Studio Headset, Writing) === -->
-    <!-- Pokémon Body / Torso -->
+    <!-- === ACOUSTIC CAPTURE AVATAR & DIGITAL CLIPBOARD === -->
+    <!-- Avatar Torso -->
     <path
         android:pathData="M34,56 C34,50 48,50 48,56 L48,74 C48,78 34,78 34,74 Z">
         <aapt:attr name="android:fillColor">
@@ -82,7 +82,7 @@
         </aapt:attr>
     </path>
 
-    <!-- Pokémon Musical Eighth-Note Crest on Head (Iconic Chatot Crest) -->
+    <!-- Musical Eighth-Note Waveform Crest on Head -->
     <!-- Stem -->
     <path
         android:pathData="M38,34 L38,22 C38,20 40,19 43,20 L48,22 C51,23 52,26 51,28 C50,29 48,30 46,29 L41,27 L41,34 Z"
@@ -92,7 +92,7 @@
         android:pathData="M48,24m-4,0a4,4 0,1 1,8 0a4,4 0,1 1,-8 0"
         android:fillColor="#06B6D4" />
 
-    <!-- Cute Pokémon Cheerful Eye -->
+    <!-- Cheerful Eye -->
     <path
         android:pathData="M36,46m-3,0a3,3 0,1 1,6 0a3,3 0,1 1,-6 0"
         android:fillColor="#FFFFFF" />
@@ -103,12 +103,12 @@
         android:pathData="M37.5,45.5m-0.6,0a0.6,0.6 0,1 1,1.2 0a0.6,0.6 0,1 1,-1.2 0"
         android:fillColor="#FFFFFF" />
 
-    <!-- Rosy Cheek (Cute) -->
+    <!-- Accent Indicator -->
     <path
         android:pathData="M32,50m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0"
         android:fillColor="#F43F5E" />
 
-    <!-- Pokémon Beak (Chatot yellow-orange beak) -->
+    <!-- Stylized Pointer -->
     <path
         android:pathData="M42,48 L48,50 L42,53 Z"
         android:fillColor="#F59E0B" />
@@ -126,7 +126,7 @@
         android:pathData="M25,43 L29,43 A2,2 0 0,1 31,45 L31,51 A2,2 0 0,1 29,53 L25,53 A2,2 0 0,1 23,51 L23,45 A2,2 0 0,1 25,43 Z"
         android:fillColor="#6366F1" />
 
-    <!-- === POKÉMON WING / HAND HOLDING STYLUS / PEN WRITING === -->
+    <!-- === STYLUS & POINTER STROKES === -->
     <!-- Arm / Wing reaching out to notepad -->
     <path
         android:pathData="M42,60 C46,58 53,60 55,65 C55,68 49,70 44,68 Z"

@@ -6,6 +6,7 @@ import android.content.Context
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -73,8 +74,19 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.ActionItemEntity
+import com.example.ui.theme.AcidGreen
+import com.example.ui.theme.CyberBackground
+import com.example.ui.theme.CyberSurface
+import com.example.ui.theme.CyberSurfaceVariant
+import com.example.ui.theme.ElectricCyan
+import com.example.ui.theme.GlassBorder
 import com.example.ui.theme.M3Primary
 import com.example.ui.theme.M3PrimaryContainer
+import com.example.ui.theme.NeonAmber
+import com.example.ui.theme.NeonViolet
+import com.example.ui.theme.TextMuted
+import com.example.ui.theme.TextPrimary
+import com.example.ui.theme.TextSecondary
 
 enum class TaskFilter {
     ALL,
@@ -123,11 +135,15 @@ fun TasksTab(
     ) {
         // Top Overview Banner
         Surface(
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 2.dp,
+            color = CyberSurface,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, GlassBorder)
+                    .padding(16.dp)
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -135,41 +151,42 @@ fun TasksTab(
                 ) {
                     Column {
                         Text(
-                            text = "Deterministic Action Item Pipeline",
+                            text = "Action Pipeline",
                             fontSize = 18.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            fontWeight = FontWeight.Black,
+                            color = TextPrimary,
+                            letterSpacing = (-0.4).sp
                         )
                         Text(
-                            text = "Auto-extracted commitments with owner and deadline",
+                            text = "Auto-extracted commitments & deadlines",
                             fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = TextSecondary
                         )
                     }
 
                     Button(
                         onClick = { isAddModalOpen = true },
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = M3Primary),
+                        colors = ButtonDefaults.buttonColors(containerColor = ElectricCyan, contentColor = Color(0xFF07090E)),
                         modifier = Modifier.testTag("add_commitment_btn")
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Add Task", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Add Task", fontSize = 12.sp, fontWeight = FontWeight.Black)
                     }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Metric Cards Row
+                // Metric Cards Row (Cyber HUD)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    TaskMetricBadge(label = "Total", count = totalCount, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
-                    TaskMetricBadge(label = "Your Tasks", count = youCount, color = Color(0xFF188038), modifier = Modifier.weight(1f))
-                    TaskMetricBadge(label = "Pending", count = pendingCount, color = Color(0xFFE37400), modifier = Modifier.weight(1f))
-                    TaskMetricBadge(label = "Completed", count = completedCount, color = Color(0xFF5F6368), modifier = Modifier.weight(1f))
+                    TaskMetricBadge(label = "Total", count = totalCount, color = ElectricCyan, modifier = Modifier.weight(1f))
+                    TaskMetricBadge(label = "Your Tasks", count = youCount, color = AcidGreen, modifier = Modifier.weight(1f))
+                    TaskMetricBadge(label = "Pending", count = pendingCount, color = NeonAmber, modifier = Modifier.weight(1f))
+                    TaskMetricBadge(label = "Done", count = completedCount, color = TextMuted, modifier = Modifier.weight(1f))
                 }
             }
         }
@@ -184,21 +201,27 @@ fun TasksTab(
             items(TaskFilter.values()) { filter ->
                 val label = when (filter) {
                     TaskFilter.ALL -> "All ($totalCount)"
-                    TaskFilter.ASSIGNED_TO_YOU -> "Assigned to You ($youCount)"
-                    TaskFilter.ASSIGNED_TO_OTHERS -> "Assigned to Others"
+                    TaskFilter.ASSIGNED_TO_YOU -> "For You ($youCount)"
+                    TaskFilter.ASSIGNED_TO_OTHERS -> "Others"
                     TaskFilter.PENDING -> "Pending ($pendingCount)"
-                    TaskFilter.COMPLETED -> "Completed ($completedCount)"
+                    TaskFilter.COMPLETED -> "Done ($completedCount)"
                 }
-                FilterChip(
-                    selected = selectedFilter == filter,
-                    onClick = { selectedFilter = filter },
-                    label = { Text(label, fontSize = 12.sp, fontWeight = FontWeight.Medium) },
-                    shape = RoundedCornerShape(8.dp),
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = M3PrimaryContainer,
-                        selectedLabelColor = M3Primary
+                val isSelected = selectedFilter == filter
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (isSelected) ElectricCyan else CyberSurface)
+                        .border(1.dp, if (isSelected) ElectricCyan else GlassBorder, RoundedCornerShape(10.dp))
+                        .clickable { selectedFilter = filter }
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = label,
+                        fontSize = 12.sp,
+                        fontWeight = if (isSelected) FontWeight.Black else FontWeight.Medium,
+                        color = if (isSelected) Color(0xFF07090E) else TextSecondary
                     )
-                )
+                }
             }
         }
 
@@ -403,11 +426,11 @@ fun TasksTab(
 
                     // Integration Grid
                     listOf(
-                        Triple("ClickUp", "Task Manager", Color(0xFF7B68EE)),
-                        Triple("Notion", "Database Sync", Color(0xFF2E2E2E)),
-                        Triple("Apple Reminders", "Native iOS/macOS", Color(0xFF007AFF)),
-                        Triple("Todoist", "Quick Task List", Color(0xFFE44332)),
-                        Triple("Google Calendar", "Event Block", Color(0xFF4285F4))
+                        Triple("Task Management", "Kanban & Projects", Color(0xFF7B68EE)),
+                        Triple("Workspace Docs", "Structured Database", Color(0xFF2E2E2E)),
+                        Triple("System Reminders", "Native Checklist", Color(0xFF007AFF)),
+                        Triple("Action Hub", "Quick Priority List", Color(0xFFE44332)),
+                        Triple("Calendar Schedule", "Event Block", Color(0xFF4285F4))
                     ).forEach { (targetName, category, badgeColor) ->
                         Surface(
                             shape = RoundedCornerShape(10.dp),
@@ -417,7 +440,7 @@ fun TasksTab(
                                 .clickable {
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                     val payload = """
-[NEOSAPIEN COMMITMENT EXPORT]
+[SPATIAL CONTEXT COMMITMENT EXPORT]
 Target Service: $targetName ($category)
 Title: ${task.title}
 Owner: ${task.owner}
@@ -481,25 +504,26 @@ fun TaskMetricBadge(
     modifier: Modifier = Modifier
 ) {
     Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = color.copy(alpha = 0.1f),
+        shape = RoundedCornerShape(12.dp),
+        color = CyberSurfaceVariant,
+        border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder),
         modifier = modifier
     ) {
         Column(
-            modifier = Modifier.padding(vertical = 8.dp, horizontal = 6.dp),
+            modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
                 text = "$count",
-                fontSize = 17.sp,
-                fontWeight = FontWeight.ExtraBold,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Black,
                 color = color
             )
             Text(
                 text = label,
                 fontSize = 10.sp,
-                fontWeight = FontWeight.Medium,
-                color = color
+                fontWeight = FontWeight.Bold,
+                color = TextSecondary
             )
         }
     }
@@ -516,11 +540,12 @@ fun ActionItemCard(
     val isDone = item.isCompleted
 
     Card(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isDone) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surface
+            containerColor = if (isDone) CyberSurface.copy(alpha = 0.6f) else CyberSurface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isDone) 0.dp else 2.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = Modifier
             .fillMaxWidth()
             .testTag("action_item_card_${item.id}")
@@ -535,12 +560,12 @@ fun ActionItemCard(
             // Interactive Checkbox
             IconButton(
                 onClick = { onToggleComplete(!isDone) },
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(26.dp)
             ) {
                 Icon(
                     imageVector = if (isDone) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
                     contentDescription = if (isDone) "Mark Incomplete" else "Mark Complete",
-                    tint = if (isDone) Color(0xFF188038) else MaterialTheme.colorScheme.outline,
+                    tint = if (isDone) AcidGreen else TextMuted,
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -557,23 +582,25 @@ fun ActionItemCard(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
-                            .background(M3PrimaryContainer)
+                            .background(ElectricCyan.copy(alpha = 0.15f))
+                            .border(1.dp, ElectricCyan.copy(alpha = 0.35f), RoundedCornerShape(6.dp))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
                             text = item.actionVerb.uppercase(),
                             fontSize = 9.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = M3Primary
+                            color = ElectricCyan
                         )
                     }
 
                     // Owner Pill
-                    val ownerColor = if (item.isAssignedToYou) Color(0xFF188038) else Color(0xFF1A73E8)
+                    val ownerColor = if (item.isAssignedToYou) AcidGreen else NeonViolet
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
-                            .background(ownerColor.copy(alpha = 0.12f))
+                            .background(ownerColor.copy(alpha = 0.14f))
+                            .border(1.dp, ownerColor.copy(alpha = 0.35f), RoundedCornerShape(6.dp))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Row(
@@ -592,14 +619,15 @@ fun ActionItemCard(
 
                     // Priority Pill
                     val (prioColor, prioLabel) = when (item.priority.uppercase()) {
-                        "HIGH" -> Pair(Color(0xFFD93025), "HIGH")
-                        "LOW" -> Pair(Color(0xFF5F6368), "LOW")
-                        else -> Pair(Color(0xFFE37400), "MED")
+                        "HIGH" -> Pair(Color(0xFFEF4444), "HIGH")
+                        "LOW" -> Pair(TextMuted, "LOW")
+                        else -> Pair(NeonAmber, "MED")
                     }
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
-                            .background(prioColor.copy(alpha = 0.1f))
+                            .background(prioColor.copy(alpha = 0.14f))
+                            .border(1.dp, prioColor.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
                             .padding(horizontal = 5.dp, vertical = 2.dp)
                     ) {
                         Text(
@@ -615,14 +643,14 @@ fun ActionItemCard(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(Color(0xFFE8F0FE))
+                                .background(NeonViolet.copy(alpha = 0.18f))
                                 .padding(horizontal = 5.dp, vertical = 2.dp)
                         ) {
                             Text(
                                 text = "→ ${item.externalSyncTarget}",
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF1A73E8)
+                                color = Color(0xFFDDD6FE)
                             )
                         }
                     }
@@ -635,7 +663,7 @@ fun ActionItemCard(
                     text = item.title,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (isDone) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                    color = if (isDone) TextMuted else TextPrimary,
                     textDecoration = if (isDone) TextDecoration.LineThrough else TextDecoration.None,
                     lineHeight = 19.sp
                 )
@@ -652,12 +680,12 @@ fun ActionItemCard(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Icon(Icons.Default.Schedule, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color(0xFFE37400))
+                        Icon(Icons.Default.Schedule, contentDescription = null, modifier = Modifier.size(12.dp), tint = NeonAmber)
                         Text(
                             text = item.dueDateFormatted,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFFE37400)
+                            color = NeonAmber
                         )
                     }
 
@@ -666,11 +694,11 @@ fun ActionItemCard(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
-                            Icon(Icons.Default.HistoryEdu, contentDescription = null, modifier = Modifier.size(11.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Icon(Icons.Default.HistoryEdu, contentDescription = null, modifier = Modifier.size(11.dp), tint = TextMuted)
                             Text(
                                 text = item.memoryTitle ?: "",
                                 fontSize = 10.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = TextMuted,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -688,7 +716,7 @@ fun ActionItemCard(
                 ) {
                     TextButton(
                         onClick = onExportClick,
-                        colors = ButtonDefaults.textButtonColors(contentColor = M3Primary)
+                        colors = ButtonDefaults.textButtonColors(contentColor = ElectricCyan)
                     ) {
                         Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(13.dp))
                         Spacer(modifier = Modifier.width(3.dp))
@@ -696,11 +724,11 @@ fun ActionItemCard(
                     }
 
                     IconButton(onClick = onEditClick, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.outline)
+                        Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(15.dp), tint = TextSecondary)
                     }
 
                     IconButton(onClick = onDeleteClick, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete", modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.error)
+                        Icon(Icons.Default.Delete, contentDescription = "Delete", modifier = Modifier.size(15.dp), tint = Color(0xFFEF4444))
                     }
                 }
             }

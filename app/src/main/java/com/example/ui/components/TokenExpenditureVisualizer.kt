@@ -201,7 +201,7 @@ fun TokenExpenditureVisualizer(
                             appendLine("Matter [${it.matterCode}]: ${it.totalTokens} tokens | $${String.format(Locale.US, "%.5f", it.totalCostUsd)} | ${it.requestCount} logs")
                         }
                     }
-                    TextExportHelper.exportAndShareTextFile(context, report, "Chatot_Token_Billing_Report")
+                    TextExportHelper.exportAndShareTextFile(context, report, "SpatialContext_Token_Billing_Report")
                 },
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.testTag("export_token_report_btn")

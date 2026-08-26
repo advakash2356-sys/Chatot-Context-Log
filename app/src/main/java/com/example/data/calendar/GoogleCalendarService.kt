@@ -129,7 +129,7 @@ class GoogleCalendarService(
                 com.example.data.local.CalendarEventEntity(
                     googleEventId = "gcal-sample-02",
                     title = "Sprint Sync: Gemini 3.5 Multimodal Engine",
-                    description = "Engineering review of Chatot Voice intelligence and live room database storage.",
+                    description = "Engineering review of Spatial Voice intelligence and live room database storage.",
                     startTime = now + 3600000L * 6,
                     endTime = now + 3600000L * 7,
                     location = "HQ Conf Room 4B",

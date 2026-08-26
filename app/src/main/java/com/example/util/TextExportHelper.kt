@@ -6,7 +6,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.example.data.ai.StructuredMeetingNotes
-import com.example.data.ai.WisprFlowResult
+import com.example.data.ai.VoiceFlowResult
 import com.example.data.local.CalendarEventEntity
 import com.example.data.local.ContextNoteEntity
 import com.example.data.local.TwoHourRollupEntity
@@ -26,7 +26,7 @@ object TextExportHelper {
      */
     fun formatMeetingMinutesText(
         meetingNotes: StructuredMeetingNotes?,
-        chatotResult: WisprFlowResult?,
+        voiceResult: VoiceFlowResult?,
         toneName: String = "Concise"
     ): String {
         val nowStr = dateFormatter.format(Date())
@@ -39,15 +39,15 @@ object TextExportHelper {
         sb.appendLine("Generated: $nowStr")
         sb.appendLine("Engine: Voice Intelligence (Gemini 3.5 Flash)")
         sb.appendLine("Tone Directive: $toneName")
-        if (chatotResult != null) {
-            sb.appendLine("Latency: ${chatotResult.latencyMs}ms | Original Words: ${chatotResult.rawTranscript.split("\\s+".toRegex()).size}")
+        if (voiceResult != null) {
+            sb.appendLine("Latency: ${voiceResult.latencyMs}ms | Original Words: ${voiceResult.rawTranscript.split("\\s+".toRegex()).size}")
         }
         sb.appendLine("--------------------------------------------------")
         sb.appendLine()
 
         sb.appendLine("1. EXECUTIVE SUMMARY")
         sb.appendLine("-------------------")
-        val summary = meetingNotes?.executiveSummary ?: chatotResult?.cleanText ?: "No summary available."
+        val summary = meetingNotes?.executiveSummary ?: voiceResult?.cleanText ?: "No summary available."
         sb.appendLine(summary)
         sb.appendLine()
 
@@ -69,10 +69,10 @@ object TextExportHelper {
             sb.appendLine()
         }
 
-        if (chatotResult != null && chatotResult.rawTranscript.isNotBlank()) {
+        if (voiceResult != null && voiceResult.rawTranscript.isNotBlank()) {
             sb.appendLine("4. ORIGINAL VOICE DICTATION TRANSCRIPT")
             sb.appendLine("--------------------------------------")
-            sb.appendLine(chatotResult.rawTranscript)
+            sb.appendLine(voiceResult.rawTranscript)
             sb.appendLine()
         }
 

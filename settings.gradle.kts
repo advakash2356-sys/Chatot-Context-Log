@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "NeoSapien"
+rootProject.name = "SpatialContext"
 
 include(":app")

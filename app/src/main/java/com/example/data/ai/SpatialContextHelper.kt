@@ -24,7 +24,7 @@ data class MultiFormatSynthesis(
     val detectedActionItems: List<ActionItemEntity>
 )
 
-object NeoSapienHelper {
+object SpatialContextHelper {
 
     fun parseSpeakerTurns(jsonString: String): List<SpeakerTurn> {
         if (jsonString.isBlank()) return emptyList()
@@ -217,7 +217,7 @@ object NeoSapienHelper {
 <system_instructions>
 You are an advanced executive intelligence partner acting on behalf of the user.
 Current Timestamp: $dateStr
-Below is the verified historical conversational memory ingested directly from the NeoSapien companion hardware & ambient stream.
+Below is the verified historical conversational memory ingested directly from the ambient spatial context audio stream.
 Use this context to accurately satisfy the user's task with zero hallucination. Cite specific memories using [Memory X] when relevant.
 </system_instructions>
 
@@ -233,7 +233,7 @@ $taskPrompt
             targetLlm.contains("ChatGPT", ignoreCase = true) || targetLlm.contains("GPT", ignoreCase = true) -> {
                 """
 # SYSTEM ROLE:
-You are an executive assistant powered by the NeoSapien companion ecosystem.
+You are an executive assistant powered by the ambient spatial context ecosystem.
 All factual statements must be grounded in the historical conversation memories provided below.
 
 # VERIFIED AMBIENT MEMORIES:
@@ -245,7 +245,7 @@ $taskPrompt
             }
             else -> {
                 """
-=== NEOSAPIEN CONTEXT INJECTION ===
+=== SPATIAL CONTEXT INJECTION ===
 Timestamp: $dateStr
 
 [HISTORICAL MEMORY CONTEXT]

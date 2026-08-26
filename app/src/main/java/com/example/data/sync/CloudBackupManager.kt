@@ -93,52 +93,60 @@ class CloudBackupManager(private val context: Context) {
      * Configures WorkManager to periodically execute background cloud sync and backups.
      */
     private fun scheduleWorkManager(frequency: BackupFrequency) {
-        val workManager = WorkManager.getInstance(context)
+        try {
+            val workManager = WorkManager.getInstance(context)
 
-        if (frequency == BackupFrequency.MANUAL) {
-            workManager.cancelUniqueWork(ContextLogSyncWorker.PERIODIC_WORK_TAG)
-            Log.d(TAG, "Cancelled periodic WorkManager backup tasks (Manual mode)")
-            return
+            if (frequency == BackupFrequency.MANUAL) {
+                workManager.cancelUniqueWork(ContextLogSyncWorker.PERIODIC_WORK_TAG)
+                Log.d(TAG, "Cancelled periodic WorkManager backup tasks (Manual mode)")
+                return
+            }
+
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+
+            val periodicRequest = PeriodicWorkRequestBuilder<ContextLogSyncWorker>(
+                frequency.intervalHours,
+                TimeUnit.HOURS,
+                15,
+                TimeUnit.MINUTES
+            )
+                .setConstraints(constraints)
+                .build()
+
+            workManager.enqueueUniquePeriodicWork(
+                ContextLogSyncWorker.PERIODIC_WORK_TAG,
+                ExistingPeriodicWorkPolicy.UPDATE,
+                periodicRequest
+            )
+            Log.d(TAG, "Scheduled WorkManager backup every ${frequency.intervalHours} hours")
+        } catch (t: Throwable) {
+            Log.w(TAG, "Unable to schedule WorkManager backup: ${t.message}")
         }
-
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
-
-        val periodicRequest = PeriodicWorkRequestBuilder<ContextLogSyncWorker>(
-            frequency.intervalHours,
-            TimeUnit.HOURS,
-            15,
-            TimeUnit.MINUTES
-        )
-            .setConstraints(constraints)
-            .build()
-
-        workManager.enqueueUniquePeriodicWork(
-            ContextLogSyncWorker.PERIODIC_WORK_TAG,
-            ExistingPeriodicWorkPolicy.UPDATE,
-            periodicRequest
-        )
-        Log.d(TAG, "Scheduled WorkManager backup every ${frequency.intervalHours} hours")
     }
 
     /**
      * Triggers an immediate one-time background sync & cloud backup.
      */
     fun triggerImmediateWorkerSync() {
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
+        try {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
 
-        val oneTimeRequest = OneTimeWorkRequestBuilder<ContextLogSyncWorker>()
-            .setConstraints(constraints)
-            .build()
+            val oneTimeRequest = OneTimeWorkRequestBuilder<ContextLogSyncWorker>()
+                .setConstraints(constraints)
+                .build()
 
-        WorkManager.getInstance(context).enqueueUniqueWork(
-            ContextLogSyncWorker.ONE_TIME_WORK_TAG,
-            ExistingWorkPolicy.REPLACE,
-            oneTimeRequest
-        )
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                ContextLogSyncWorker.ONE_TIME_WORK_TAG,
+                ExistingWorkPolicy.REPLACE,
+                oneTimeRequest
+            )
+        } catch (t: Throwable) {
+            Log.w(TAG, "Unable to trigger immediate worker sync: ${t.message}")
+        }
     }
 
     /**
