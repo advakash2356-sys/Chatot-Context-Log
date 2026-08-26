@@ -2,14 +2,14 @@ package com.example.data.repository
 
 import com.example.data.ai.DocumentChunker
 import com.example.data.ai.GeminiService
-import com.example.data.ai.NeoSapienHelper
 import com.example.data.ai.ParsedNoteResult
+import com.example.data.ai.SpatialContextHelper
 import com.example.data.ai.TwoHourRollupResult
-import com.example.data.ai.WisprContextType
-import com.example.data.ai.WisprFlowEngine
-import com.example.data.ai.WisprFlowResult
-import com.example.data.ai.WisprTone
-import com.example.data.ai.WisprTransform
+import com.example.data.ai.VoiceContextType
+import com.example.data.ai.VoiceFlowEngine
+import com.example.data.ai.VoiceFlowResult
+import com.example.data.ai.VoiceTone
+import com.example.data.ai.VoiceTransform
 import com.example.data.calendar.GoogleCalendarService
 import com.example.data.billing.TokenBillingService
 import com.example.data.local.ActionItemEntity
@@ -37,7 +37,8 @@ class ContextLogRepository(
     private val dao: ContextLogDao,
     private val geminiService: GeminiService,
     private val calendarService: GoogleCalendarService = GoogleCalendarService(),
-    val wisprEngine: WisprFlowEngine = WisprFlowEngine(),
+    val voiceEngine: VoiceFlowEngine = VoiceFlowEngine(),
+    val wisprEngine: VoiceFlowEngine = voiceEngine,
     val tokenBillingService: TokenBillingService = TokenBillingService(dao)
 ) {
     val allMatters: Flow<List<MatterEntity>> = dao.getAllMatters()
@@ -218,22 +219,22 @@ class ContextLogRepository(
     }
 
     /**
-     * Executes the comprehensive Wispr Flow pipeline:
+     * Executes the comprehensive Voice Flow pipeline:
      * - Personal Dictionary preservation
      * - Snippet trigger expansion
      * - Natural speech cleanup (fillers, false starts, stuttering, backtracks)
-     * - Context-aware adaptation (Email, Slack, LinkedIn, Task List, Prompt, Meeting Note)
+     * - Context-aware adaptation (Email, Chat, Social Post, Task List, Prompt, Meeting Note)
      * - Tone & style rewriting (Executive, Professional, Casual, Concise, Friendly, etc.)
      */
-    suspend fun processWisprFlow(
+    suspend fun processVoiceFlow(
         rawInput: String,
-        contextType: WisprContextType = WisprContextType.GENERAL,
-        tone: WisprTone = WisprTone.AUTO_CLEAN,
+        contextType: VoiceContextType = VoiceContextType.GENERAL,
+        tone: VoiceTone = VoiceTone.AUTO_CLEAN,
         targetLanguage: String? = null
-    ): WisprFlowResult = withContext(Dispatchers.IO) {
+    ): VoiceFlowResult = withContext(Dispatchers.IO) {
         val dictionary = dao.getAllDictionaryItemsSync()
         val snippets = dao.getAllSnippetsSync()
-        wisprEngine.processWisprFlow(
+        voiceEngine.processVoiceFlow(
             rawInput = rawInput,
             contextType = contextType,
             tone = tone,
@@ -243,16 +244,23 @@ class ContextLogRepository(
         )
     }
 
+    suspend fun processWisprFlow(
+        rawInput: String,
+        contextType: VoiceContextType = VoiceContextType.GENERAL,
+        tone: VoiceTone = VoiceTone.AUTO_CLEAN,
+        targetLanguage: String? = null
+    ): VoiceFlowResult = processVoiceFlow(rawInput, contextType, tone, targetLanguage)
+
     /**
      * Executes AI Transforms (Polish, Concise, Bullets, To Email, To Tasks, To LinkedIn, To Prompt, Translate).
      */
     suspend fun executeAiTransform(
         input: String,
-        transform: WisprTransform,
+        transform: VoiceTransform,
         customInstruction: String? = null
     ): String = withContext(Dispatchers.IO) {
         val dictionary = dao.getAllDictionaryItemsSync()
-        wisprEngine.executeTransform(
+        voiceEngine.executeTransform(
             input = input,
             transform = transform,
             customInstruction = customInstruction,
@@ -436,250 +444,17 @@ class ContextLogRepository(
         dao.deleteNote(id)
     }
 
+    suspend fun insertCalendarEvent(event: CalendarEventEntity) = withContext(Dispatchers.IO) {
+        dao.insertCalendarEvent(event)
+    }
+
+    suspend fun insertCalendarEvents(events: List<CalendarEventEntity>) = withContext(Dispatchers.IO) {
+        dao.insertCalendarEvents(events)
+    }
+
     suspend fun seedInitialDataIfEmpty() = withContext(Dispatchers.IO) {
-        val existingMatters = dao.getAllMatters().first()
-        if (existingMatters.isNotEmpty()) return@withContext
-
-        // Seed Personal Dictionary
-        val dictList = listOf(
-            DictionaryItemEntity(term = "Akash", category = "NAME", phoneticOrNotes = "Author & Architect"),
-            DictionaryItemEntity(term = "Kaito", category = "NAME", phoneticOrNotes = "Engineering Partner"),
-            DictionaryItemEntity(term = "Wispr Flow", category = "PRODUCT", phoneticOrNotes = "Voice Dictation Engine"),
-            DictionaryItemEntity(term = "ContextLog", category = "PRODUCT", phoneticOrNotes = "Context Intelligence Platform"),
-            DictionaryItemEntity(term = "Azure AI Foundry", category = "COMPANY", phoneticOrNotes = "Cloud ML Suite"),
-            DictionaryItemEntity(term = "LGL-9021", category = "ACRONYM", phoneticOrNotes = "IP & Licensing Matter"),
-            DictionaryItemEntity(term = "CTX-2024-08", category = "ACRONYM", phoneticOrNotes = "Core Context Project"),
-            DictionaryItemEntity(term = "PostgreSQL", category = "TECHNICAL", phoneticOrNotes = "Relational DB Engine")
-        )
-        for (item in dictList) {
-            dao.insertDictionaryItem(item)
-        }
-
-        // Seed Snippets
-        val snippetList = listOf(
-            SnippetEntity(
-                triggerPhrase = "my email",
-                expandedText = "Adv.Akash2356@gmail.com",
-                description = "Primary contact email"
-            ),
-            SnippetEntity(
-                triggerPhrase = "my intro",
-                expandedText = "Hi, I am Adv. Akash, Principal Counsel & AI Systems Architect specializing in contextual intelligence.",
-                description = "Professional bio intro"
-            ),
-            SnippetEntity(
-                triggerPhrase = "meeting link",
-                expandedText = "https://meet.google.com/context-flow-sync",
-                description = "Google Meet conference room link"
-            ),
-            SnippetEntity(
-                triggerPhrase = "standard follow-up",
-                expandedText = "Thank you for joining our sync today. Attached are the summarized action items and scheduled next steps for your review.",
-                description = "Post-meeting follow-up template"
-            )
-        )
-        for (snippet in snippetList) {
-            dao.insertSnippet(snippet)
-        }
-
-        // Seed Matters
-        val matter1 = MatterEntity(code = "CTX-2024-08", name = "ContextLog Engine", clientName = "AI Studio Platform")
-        val matter2 = MatterEntity(code = "LGL-9021", name = "IP & Licensing Contract", clientName = "Apex Systems")
-        val matter3 = MatterEntity(code = "MTR-104", name = "Quarterly Compliance Strategy", clientName = "Vanguard Tech")
-        val matter4 = MatterEntity(code = "DECISION-PAUSE", name = "System Architecture Pause", clientName = "Internal Ops")
-
-        dao.insertMatter(matter1)
-        dao.insertMatter(matter2)
-        dao.insertMatter(matter3)
-        dao.insertMatter(matter4)
-
-        // Seed Context Notes (NeoSapien Memories)
-        val now = System.currentTimeMillis()
-        val twoHoursMs = 7200000L
-
-        val turns1 = listOf(
-            com.example.data.ai.SpeakerTurn("You", "00:05", "Let's review the Q3 cloud infrastructure deliverables and vendor pricing quotes.", true),
-            com.example.data.ai.SpeakerTurn("Speaker 1 (Alex)", "00:22", "We received the revised proposal from Apex Cloud. They agreed to reduce the enterprise tier to $14k/month if signed before Friday.", false),
-            com.example.data.ai.SpeakerTurn("You", "00:41", "That works well within budget. I will draft the approval addendum and send it over to legal by 3 PM.", true),
-            com.example.data.ai.SpeakerTurn("Speaker 2 (Sarah)", "01:05", "Great. I will finalize the SOC2 security compliance checklist and attach the report.", false)
-        )
-
-        val note1 = ContextNoteEntity(
-            title = "Q3 Cloud Vendor & Security Review",
-            sessionBoundaryId = "SESSION-0823-01",
-            durationSeconds = 145,
-            source = "PENDANT_BLE",
-            rawTranscript = "Let's review the Q3 cloud infrastructure deliverables and vendor pricing quotes. We received the revised proposal from Apex Cloud. They agreed to reduce the enterprise tier to $14k/month if signed before Friday. I will draft the approval addendum and send it over to legal by 3 PM. I will finalize the SOC2 security compliance checklist and attach the report.",
-            cleanText = "Reviewed Q3 cloud infrastructure deliverables with Alex and Sarah. Approved Apex Cloud pricing reduction to $14k/month. Committed to drafting the approval addendum for legal by 3 PM.",
-            executiveSummary = "• Approved Apex Cloud enterprise infrastructure pricing at $14k/month.\n• Reached consensus on SOC2 security compliance prerequisites.\n• Action items assigned: approval addendum to legal, SOC2 report attachment.",
-            structuredNotes = "### Key Decisions\n- Accepted $14k/mo discounted tier with Apex Cloud.\n- Finalized SOC2 compliance deadline for Friday.\n\n### Discussion Highlights\n- Explored cost optimization across multi-region clusters.\n- Verified legal approval workflow.",
-            verbatimTurnsJson = NeoSapienHelper.serializeSpeakerTurns(turns1),
-            audioPurged = true,
-            isEncrypted = true,
-            participants = "You, Alex, Sarah",
-            entryType = EntryType.LOG,
-            matterCode = "CTX-2024-08",
-            depthLevel = 2,
-            recordedAt = now - 1800000L,
-            tags = "Cloud,Vendor,Pricing,Security"
-        )
-
-        val turns2 = listOf(
-            com.example.data.ai.SpeakerTurn("You", "00:02", "We need to optimize the RAG embedding pipeline for zero-latency memory retrieval.", true),
-            com.example.data.ai.SpeakerTurn("Speaker 1 (Kaito)", "00:19", "I benchmarked 500-word chunks with cosine similarity over SQLite embeddings. We achieved 42ms retrieval latency.", false),
-            com.example.data.ai.SpeakerTurn("You", "00:38", "Excellent. Let's make sure we also cache pre-meeting briefings to prepare users instantly.", true)
-        )
-
-        val note2 = ContextNoteEntity(
-            title = "RAG Vector Retrieval Architecture",
-            sessionBoundaryId = "SESSION-0823-02",
-            durationSeconds = 98,
-            source = "DESKTOP_LOOPBACK",
-            rawTranscript = "We need to optimize the RAG embedding pipeline for zero-latency memory retrieval. I benchmarked 500-word chunks with cosine similarity over SQLite embeddings. We achieved 42ms retrieval latency. Excellent. Let's make sure we also cache pre-meeting briefings to prepare users instantly.",
-            cleanText = "Benchmarked vector search RAG pipeline. Verified 42ms retrieval latency over SQLite embeddings with 500-word document chunking.",
-            executiveSummary = "• Validated 42ms local vector search retrieval over encrypted embeddings.\n• Approved 500-word document chunking standard for precision grounding.\n• Scheduled pre-meeting briefing caching module.",
-            structuredNotes = "### Architecture Specs\n- 500-word semantic chunking with 50-word overlap.\n- Zero-latency local SQLite embeddings vector table.",
-            verbatimTurnsJson = NeoSapienHelper.serializeSpeakerTurns(turns2),
-            audioPurged = true,
-            isEncrypted = true,
-            participants = "You, Kaito",
-            entryType = EntryType.RAG_QUESTION,
-            matterCode = "DECISION-PAUSE",
-            depthLevel = 3,
-            recordedAt = now - 3600000L,
-            tags = "VectorSearch,RAG,Performance"
-        )
-
-        val note3 = ContextNoteEntity(
-            title = "Client Compliance Strategy Call",
-            sessionBoundaryId = "SESSION-0822-01",
-            durationSeconds = 210,
-            source = "PENDANT_BLE",
-            rawTranscript = "Scheduled client compliance review call for tomorrow at 10 AM. Will verify data retention and automated audio purge protocols.",
-            cleanText = "Scheduled client compliance review call for tomorrow at 10 AM. Will verify data retention and automated audio purge protocols.",
-            executiveSummary = "• Confirmed compliance audit scheduled for 10:00 AM.\n• Outlined automated audio purge verification steps.\n• Synced calendar invite with client legal team.",
-            structuredNotes = "### Client Objectives\n- Verify GDPR/SOC2 compliance.\n- Ensure zero-retention raw audio policy.",
-            verbatimTurnsJson = NeoSapienHelper.serializeSpeakerTurns(listOf(
-                com.example.data.ai.SpeakerTurn("You", "00:00", "Scheduled client compliance review call for tomorrow at 10 AM.", true)
-            )),
-            audioPurged = true,
-            isEncrypted = true,
-            participants = "You, Vanguard Legal",
-            entryType = EntryType.REMINDER,
-            matterCode = "MTR-104",
-            depthLevel = 1,
-            recordedAt = now - (twoHoursMs + 1800000L),
-            syncedToCalendar = true,
-            googleEventId = "seed-evt-mtr-104",
-            tags = "ClientCall,Compliance,Calendar"
-        )
-
-        val note4 = ContextNoteEntity(
-            title = "Patent & IP Licensing Negotiation",
-            sessionBoundaryId = "SESSION-0821-03",
-            durationSeconds = 310,
-            source = "PENDANT_BLE",
-            rawTranscript = "Reviewed patent claim clauses for AI generated code artifacts with client counsel. Negotiated 30-day termination notice and IP assignment.",
-            cleanText = "Reviewed patent claim clauses for AI generated code artifacts with client counsel. Negotiated 30-day termination notice and IP assignment.",
-            executiveSummary = "• Finalized IP assignment terms for AI artifacts.\n• Agreed upon 30-day bilateral termination window.\n• All work product confirmed to vest with client upon delivery.",
-            structuredNotes = "### Contract Terms\n- Section 4: Termination & IP assignment.\n- 14-day post-termination data destruction certificate required.",
-            verbatimTurnsJson = NeoSapienHelper.serializeSpeakerTurns(listOf(
-                com.example.data.ai.SpeakerTurn("You", "00:00", "Reviewed patent claim clauses for AI generated code artifacts with client counsel.", true)
-            )),
-            audioPurged = true,
-            isEncrypted = true,
-            participants = "You, Apex Legal Counsel",
-            entryType = EntryType.LEGAL_MATTER,
-            matterCode = "LGL-9021",
-            depthLevel = 4,
-            recordedAt = now - (twoHoursMs + 3600000L),
-            tags = "Contract,IP,Negotiation"
-        )
-
-        dao.insertNote(note1)
-        dao.insertNote(note2)
-        dao.insertNote(note3)
-        dao.insertNote(note4)
-
-        // Seed Action Items
-        val seedActionItems = listOf(
-            ActionItemEntity(
-                title = "Draft approval addendum and send over to legal",
-                owner = "You",
-                isAssignedToYou = true,
-                actionVerb = "Draft",
-                dueDateFormatted = "Today, 3:00 PM",
-                isCompleted = false,
-                priority = "HIGH",
-                memoryId = note1.id,
-                memoryTitle = note1.title,
-                externalSyncTarget = "ClickUp",
-                externalSyncStatus = "READY"
-            ),
-            ActionItemEntity(
-                title = "Finalize SOC2 security compliance checklist and attach report",
-                owner = "Sarah",
-                isAssignedToYou = false,
-                actionVerb = "Submit",
-                dueDateFormatted = "Friday, 5:00 PM",
-                isCompleted = false,
-                priority = "HIGH",
-                memoryId = note1.id,
-                memoryTitle = note1.title,
-                externalSyncTarget = "Notion",
-                externalSyncStatus = "READY"
-            ),
-            ActionItemEntity(
-                title = "Send signed Apex Cloud enterprise addendum ($14k/mo)",
-                owner = "Alex",
-                isAssignedToYou = false,
-                actionVerb = "Send",
-                dueDateFormatted = "Friday, 2:00 PM",
-                isCompleted = false,
-                priority = "MEDIUM",
-                memoryId = note1.id,
-                memoryTitle = note1.title,
-                externalSyncTarget = "Todoist",
-                externalSyncStatus = "READY"
-            ),
-            ActionItemEntity(
-                title = "Review patent claim clauses and IP assignment wording",
-                owner = "You",
-                isAssignedToYou = true,
-                actionVerb = "Review",
-                dueDateFormatted = "Tomorrow, 11:00 AM",
-                isCompleted = true,
-                priority = "MEDIUM",
-                memoryId = note4.id,
-                memoryTitle = note4.title,
-                externalSyncTarget = "Apple Reminders",
-                externalSyncStatus = "SYNCED"
-            )
-        )
-        dao.insertActionItems(seedActionItems)
-
-        // Ingest sample documents with 500-word chunking and citations
-        ingestDocument(
-            title = "Master Legal Services & IP Agreement",
-            content = "Section 4. Termination & Intellectual Property. Either party may terminate this agreement upon 30 days written notice. Upon termination, all rights, title, and interest in work product, source code, and AI model outputs developed under this statement of work shall immediately vest with the Client. The Provider shall destroy all copies of Confidential Information within 14 days of termination receipt.",
-            matterCode = "LGL-9021"
-        )
-
-        ingestDocument(
-            title = "PostgreSQL Trigger Efficiency & 2-Hour Window Spec",
-            content = "The set_two_hour_block trigger calculates two_hour_block_start using floor(extract(epoch from recorded_at) / 7200) * 7200. This enables zero-latency rollups into 2-hour billable blocks for legal time tracking and billing context.",
-            matterCode = "CTX-2024-08"
-        )
-
-        ingestDocument(
-            title = "Google Calendar API Sync & OAuth Scopes",
-            content = "Google Calendar API requires scope https://www.googleapis.com/auth/calendar.events for automated event synchronization. Notes classified as REMINDER or LEGAL_MATTER automatically generate secondary calendar events.",
-            matterCode = "MTR-104"
-        )
-
-        // Seed initial 2-hour rollups
-        generateAndSaveRollup(ContextNoteEntity.calculateTwoHourBlock(now))
-        generateAndSaveRollup(ContextNoteEntity.calculateTwoHourBlock(now - twoHoursMs))
+        // Fresh installation yields a 100% blank slate.
+        // No dummy tasks, no ghost notes, no hardcoded placeholder data.
     }
 
     suspend fun updateNoteTags(noteId: String, tags: List<String>) = withContext(Dispatchers.IO) {
@@ -706,7 +481,7 @@ class ContextLogRepository(
         updateNoteTags(noteId, currentTags)
     }
 
-    // NeoSapien Deterministic Task Pipeline
+    // Deterministic Task Pipeline
     suspend fun insertActionItem(item: ActionItemEntity) = withContext(Dispatchers.IO) {
         dao.insertActionItem(item)
     }
@@ -731,7 +506,11 @@ class ContextLogRepository(
         dao.deleteActionItem(id)
     }
 
-    // NeoSapien Pre-Meeting Dossier Generator
+    suspend fun deleteCalendarEvent(id: String) = withContext(Dispatchers.IO) {
+        dao.deleteCalendarEvent(id)
+    }
+
+    // Pre-Meeting Dossier Generator
     suspend fun generatePreMeetingBriefing(targetPersonOrTopic: String): BriefingDossierEntity = withContext(Dispatchers.IO) {
         val allNotesList = dao.getAllNotesSync()
         val relevantNotes = allNotesList.filter { note ->
@@ -747,7 +526,7 @@ class ContextLogRepository(
         }
 
         val prompt = """
-You are an executive briefing intelligence agent for NeoSapien.
+You are an executive briefing intelligence agent for ambient spatial context.
 Target Contact / Topic: $targetPersonOrTopic
 
 Historical Context Memories:
@@ -784,10 +563,10 @@ Keep it strictly factual, professional, and actionable.
         dao.deleteBriefingDossier(id)
     }
 
-    // NeoSapien Context Export Prompt Builder
+    // Spatial Context Export Prompt Builder
     suspend fun generateContextPrompt(targetLlm: String, customQuery: String): String = withContext(Dispatchers.IO) {
         val notes = dao.getAllNotesSync().take(5)
-        NeoSapienHelper.buildPromptForLlm(
+        SpatialContextHelper.buildPromptForLlm(
             targetLlm = targetLlm,
             notes = notes,
             taskPrompt = customQuery.ifBlank { "Synthesize all recent meetings, decisions made, and outstanding action items into an executive status report." }

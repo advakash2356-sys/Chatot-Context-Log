@@ -3,12 +3,11 @@ package com.example.data.audio
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.os.VibrationEffect
-import android.os.Vibrator
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.Log
+import com.example.util.HapticFeedbackManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -28,7 +27,7 @@ import java.util.Locale
  * - Smart capitalization & spacing normalizer
  * - Snippets and custom dictionary live expansion
  * - Dynamic 5-bar RMS energy spectrum for visual audio accessibility
- * - Tactile haptic feedback on speech events
+ * - Tactile haptic feedback via HapticFeedbackManager on speech events
  */
 class SpeechDictationManager(private val context: Context) {
 
@@ -37,11 +36,7 @@ class SpeechDictationManager(private val context: Context) {
     private var simulationJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.Main)
 
-    private val vibrator = try {
-        context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-    } catch (e: Exception) {
-        null
-    }
+    private val hapticFeedbackManager = HapticFeedbackManager.getInstance(context)
 
     private val _isListening = MutableStateFlow(false)
     val isListening: StateFlow<Boolean> = _isListening.asStateFlow()
@@ -71,21 +66,22 @@ class SpeechDictationManager(private val context: Context) {
     private var customSnippetsMap: Map<String, String> = emptyMap()
 
     init {
-        initSpeechRecognizer()
+        // Safe lazy initialization on startListening
     }
 
-    private fun initSpeechRecognizer() {
+    private fun ensureSpeechRecognizerInitialized() {
+        if (speechRecognizer != null) return
         try {
             isRecognizerAvailable = SpeechRecognizer.isRecognitionAvailable(context)
             if (isRecognizerAvailable) {
-                speechRecognizer?.destroy()
                 speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
                     setRecognitionListener(createRecognitionListener())
                 }
             }
-        } catch (e: Exception) {
-            Log.w("SpeechDictationManager", "Native speech recognizer unavailable: ${e.message}")
+        } catch (t: Throwable) {
+            Log.w("SpeechDictationManager", "Native speech recognizer unavailable: ${t.message}")
             isRecognizerAvailable = false
+            speechRecognizer = null
         }
     }
 
@@ -117,7 +113,9 @@ class SpeechDictationManager(private val context: Context) {
         _isListening.value = true
         _accessibilityAnnouncement.value = "Dictation started. Speak now."
 
-        triggerHaptic(50)
+        hapticFeedbackManager.triggerRecordingStart()
+
+        ensureSpeechRecognizerInitialized()
 
         if (isRecognizerAvailable && speechRecognizer != null) {
             startNativeListening()
@@ -169,7 +167,7 @@ class SpeechDictationManager(private val context: Context) {
         val formattedText = formatSpokenText(rawText)
         _partialTranscript.value = formattedText
         _accessibilityAnnouncement.value = "Dictation stopped. Total text captured."
-        triggerHaptic(30)
+        hapticFeedbackManager.triggerRecordingStop()
 
         onFinalResultCallback?.invoke(formattedText)
         return formattedText
@@ -180,6 +178,7 @@ class SpeechDictationManager(private val context: Context) {
         val formatted = formatSpokenText(sampleText)
         accumulatedFinalText.append(formatted)
         _partialTranscript.value = formatted
+        hapticFeedbackManager.triggerSegmentProcessed()
         onFinalResultCallback?.invoke(formatted)
     }
 
@@ -200,6 +199,9 @@ class SpeechDictationManager(private val context: Context) {
                 currentText = if (currentText.isBlank()) token else "$currentText $token"
                 val parsedText = formatSpokenText(currentText)
                 _partialTranscript.value = parsedText
+
+                // Trigger subtle haptic pulse for streaming transcription segment
+                hapticFeedbackManager.triggerSegmentProcessed()
 
                 val energy = (0.35f + (Math.random() * 0.65f).toFloat()).coerceIn(0.1f, 1.0f)
                 _rmsAmplitude.value = energy
@@ -245,6 +247,7 @@ class SpeechDictationManager(private val context: Context) {
 
             override fun onError(error: Int) {
                 Log.w("SpeechDictationManager", "Speech recognizer error code: $error")
+                hapticFeedbackManager.triggerError()
                 when (error) {
                     SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> {
                         _errorMessage.value = "Microphone permission is required for speech dictation."
@@ -304,6 +307,8 @@ class SpeechDictationManager(private val context: Context) {
                         partial
                     }
                     _partialTranscript.value = formatSpokenText(combined)
+                    // Trigger fine-grained haptic tick on recognized partial segment
+                    hapticFeedbackManager.triggerSegmentProcessed()
                 }
             }
 
@@ -330,7 +335,7 @@ class SpeechDictationManager(private val context: Context) {
                 accumulatedFinalText.clear()
                 _partialTranscript.value = ""
                 _accessibilityAnnouncement.value = "Text cleared."
-                triggerHaptic(80)
+                hapticFeedbackManager.triggerSelection()
                 return
             }
             lower == "delete last sentence" || lower == "undo" || lower == "delete that" -> {
@@ -344,7 +349,7 @@ class SpeechDictationManager(private val context: Context) {
                 }
                 _partialTranscript.value = accumulatedFinalText.toString().trim()
                 _accessibilityAnnouncement.value = "Undone last phrase."
-                triggerHaptic(40)
+                hapticFeedbackManager.triggerSelection()
                 return
             }
         }
@@ -353,6 +358,8 @@ class SpeechDictationManager(private val context: Context) {
         val parsed = formatSpokenText(trimmed)
         accumulatedFinalText.append(parsed).append(" ")
         _partialTranscript.value = accumulatedFinalText.toString().trim()
+        // Tactile confirmation on finalized utterance segment
+        hapticFeedbackManager.triggerSegmentProcessed()
     }
 
     /**
@@ -417,18 +424,6 @@ class SpeechDictationManager(private val context: Context) {
         val b3 = (energy * 0.8f + (Math.random() * 0.3f).toFloat()).coerceIn(0.05f, 1.0f)
         val b4 = (energy * 0.5f + (Math.random() * 0.2f).toFloat()).coerceIn(0.05f, 1.0f)
         _waveformLevels.value = floatArrayOf(b0, b1, b2, b3, b4)
-    }
-
-    private fun triggerHaptic(durationMs: Long) {
-        try {
-            vibrator?.let {
-                if (it.hasVibrator()) {
-                    it.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
-                }
-            }
-        } catch (e: Exception) {
-            // Ignore haptic errors on emulators
-        }
     }
 
     fun destroy() {

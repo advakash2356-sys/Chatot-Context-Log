@@ -140,40 +140,48 @@ class GoogleCalendarSyncWorker(
          * Schedules periodic WorkManager task to keep Google Calendar events in sync.
          */
         fun schedulePeriodicCalendarSync(context: Context, intervalMinutes: Long = 60) {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
+            try {
+                val constraints = Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+
+                val periodicRequest = PeriodicWorkRequestBuilder<GoogleCalendarSyncWorker>(
+                    intervalMinutes, TimeUnit.MINUTES,
+                    15, TimeUnit.MINUTES // Flex interval
+                )
+                .setConstraints(constraints)
+                .addTag(PERIODIC_CALENDAR_WORK_NAME)
                 .build()
 
-            val periodicRequest = PeriodicWorkRequestBuilder<GoogleCalendarSyncWorker>(
-                intervalMinutes, TimeUnit.MINUTES,
-                15, TimeUnit.MINUTES // Flex interval
-            )
-            .setConstraints(constraints)
-            .addTag(PERIODIC_CALENDAR_WORK_NAME)
-            .build()
-
-            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-                PERIODIC_CALENDAR_WORK_NAME,
-                ExistingPeriodicWorkPolicy.KEEP,
-                periodicRequest
-            )
-            Log.d(TAG, "Scheduled periodic Google Calendar sync every $intervalMinutes minutes")
+                WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                    PERIODIC_CALENDAR_WORK_NAME,
+                    ExistingPeriodicWorkPolicy.KEEP,
+                    periodicRequest
+                )
+                Log.d(TAG, "Scheduled periodic Google Calendar sync every $intervalMinutes minutes")
+            } catch (t: Throwable) {
+                Log.w(TAG, "Unable to schedule periodic Google Calendar sync: ${t.message}")
+            }
         }
 
         /**
          * Triggers an immediate one-time sync of calendar events and context note creation.
          */
         fun enqueueOneTimeCalendarSync(context: Context) {
-            val oneTimeRequest = OneTimeWorkRequestBuilder<GoogleCalendarSyncWorker>()
-                .addTag(ONE_TIME_CALENDAR_WORK_NAME)
-                .build()
+            try {
+                val oneTimeRequest = OneTimeWorkRequestBuilder<GoogleCalendarSyncWorker>()
+                    .addTag(ONE_TIME_CALENDAR_WORK_NAME)
+                    .build()
 
-            WorkManager.getInstance(context).enqueueUniqueWork(
-                ONE_TIME_CALENDAR_WORK_NAME,
-                ExistingWorkPolicy.REPLACE,
-                oneTimeRequest
-            )
-            Log.d(TAG, "Enqueued one-time Google Calendar sync worker")
+                WorkManager.getInstance(context).enqueueUniqueWork(
+                    ONE_TIME_CALENDAR_WORK_NAME,
+                    ExistingWorkPolicy.REPLACE,
+                    oneTimeRequest
+                )
+                Log.d(TAG, "Enqueued one-time Google Calendar sync worker")
+            } catch (t: Throwable) {
+                Log.w(TAG, "Unable to enqueue one-time Google Calendar sync: ${t.message}")
+            }
         }
     }
 }

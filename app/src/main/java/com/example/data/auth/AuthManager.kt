@@ -30,7 +30,7 @@ sealed class AuthState {
 
 class AuthManager(private val context: Context) {
     private var auth: FirebaseAuth? = null
-    private val credentialManager: CredentialManager = CredentialManager.create(context)
+    private val credentialManager: CredentialManager by lazy { CredentialManager.create(context) }
 
     private val _authState = MutableStateFlow<AuthState>(AuthState.Initializing)
     val authState: StateFlow<AuthState> = _authState
@@ -44,8 +44,8 @@ class AuthManager(private val context: Context) {
             val app = if (FirebaseApp.getApps(context).isEmpty()) {
                 val options = FirebaseOptions.Builder()
                     .setApplicationId(context.packageName)
-                    .setProjectId("chatot-voice-notes")
-                    .setApiKey("AIzaSyChatotKeyLocalFallback")
+                    .setProjectId("spatial-context-notes")
+                    .setApiKey("AIzaSySpatialContextLocalFallback")
                     .build()
                 FirebaseApp.initializeApp(context, options)
             } else {

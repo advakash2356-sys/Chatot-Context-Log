@@ -18,7 +18,7 @@ data class ActionItemEntity(
     val isCompleted: Boolean = false,
     val priority: String = "HIGH", // "HIGH", "MEDIUM", "LOW"
     val extractedAt: Long = System.currentTimeMillis(),
-    val externalSyncTarget: String? = null, // "ClickUp", "Notion", "Todoist", "Apple Reminders", "Google Calendar", "Outlook"
+    val externalSyncTarget: String? = null, // "Task Management", "Workspace Docs", "System Reminders", "Action Hub", "Calendar Schedule"
     val externalSyncStatus: String = "READY" // "READY", "EXPORTED", "SYNCED"
 )
 

@@ -106,10 +106,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.example.data.ai.StructuredMeetingNotes
-import com.example.data.ai.WisprContextType
-import com.example.data.ai.WisprFlowResult
-import com.example.data.ai.WisprTone
-import com.example.data.ai.WisprTransform
+import com.example.data.ai.VoiceContextType
+import com.example.data.ai.VoiceFlowResult
+import com.example.data.ai.VoiceTone
+import com.example.data.ai.VoiceTransform
 import com.example.data.local.DictionaryItemEntity
 import com.example.data.local.SnippetEntity
 import com.example.ui.theme.M3OnPrimaryContainer
@@ -120,19 +120,19 @@ import com.example.ui.theme.M3PrimaryContainer
 fun FlowStudioTab(
     wisprInput: String,
     onInputChange: (String) -> Unit,
-    selectedContext: WisprContextType,
-    onContextSelect: (WisprContextType) -> Unit,
-    selectedTone: WisprTone,
-    onToneSelect: (WisprTone) -> Unit,
+    selectedContext: VoiceContextType,
+    onContextSelect: (VoiceContextType) -> Unit,
+    selectedTone: VoiceTone,
+    onToneSelect: (VoiceTone) -> Unit,
     selectedLanguage: String,
     onLanguageSelect: (String) -> Unit,
-    wisprResult: WisprFlowResult?,
+    wisprResult: VoiceFlowResult?,
     isProcessing: Boolean,
     onRunFlow: () -> Unit,
-    activeTransform: WisprTransform?,
+    activeTransform: VoiceTransform?,
     transformResult: String?,
     isTransformLoading: Boolean,
-    onRunTransform: (WisprTransform, String?) -> Unit,
+    onRunTransform: (VoiceTransform, String?) -> Unit,
     isRecordingAudio: Boolean,
     recordingSeconds: Int,
     micAmplitude: Float = 0.1f,
@@ -663,11 +663,11 @@ fun FlowStudioTab(
                             .clickable {
                                 onInputChange(prompt)
                                 if (title.contains("Meeting")) {
-                                    onContextSelect(WisprContextType.MEETING_NOTE)
+                                    onContextSelect(VoiceContextType.MEETING_NOTE)
                                 } else if (title.contains("AI Prompt")) {
-                                    onContextSelect(WisprContextType.AI_PROMPT)
+                                    onContextSelect(VoiceContextType.AI_PROMPT)
                                 } else {
-                                    onContextSelect(WisprContextType.GENERAL)
+                                    onContextSelect(VoiceContextType.GENERAL)
                                 }
                             },
                         shape = RoundedCornerShape(10.dp),
@@ -704,7 +704,7 @@ fun FlowStudioTab(
                 modifier = Modifier.horizontalScroll(scrollState),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                WisprContextType.entries.forEach { contextType ->
+                VoiceContextType.entries.forEach { contextType ->
                     FilterChip(
                         selected = selectedContext == contextType,
                         onClick = { onContextSelect(contextType) },
@@ -712,12 +712,12 @@ fun FlowStudioTab(
                         leadingIcon = {
                             Icon(
                                 imageVector = when (contextType) {
-                                    WisprContextType.EMAIL -> Icons.Default.Email
-                                    WisprContextType.TASK_LIST -> Icons.Default.FormatListBulleted
-                                    WisprContextType.MEETING_NOTE -> Icons.Default.Description
-                                    WisprContextType.LONG_CONTEXT_SYNC -> Icons.Default.Groups
-                                    WisprContextType.AI_PROMPT -> Icons.Default.Psychology
-                                    WisprContextType.JOURNAL -> Icons.Default.HistoryEdu
+                                    VoiceContextType.EMAIL -> Icons.Default.Email
+                                    VoiceContextType.TASK_LIST -> Icons.Default.FormatListBulleted
+                                    VoiceContextType.MEETING_NOTE -> Icons.Default.Description
+                                    VoiceContextType.LONG_CONTEXT_SYNC -> Icons.Default.Groups
+                                    VoiceContextType.AI_PROMPT -> Icons.Default.Psychology
+                                    VoiceContextType.JOURNAL -> Icons.Default.HistoryEdu
                                     else -> Icons.Default.Edit
                                 },
                                 contentDescription = null,
@@ -754,7 +754,7 @@ fun FlowStudioTab(
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(WisprTone.entries.toList()) { tone ->
+                            items(VoiceTone.entries.toList()) { tone ->
                                 Surface(
                                     modifier = Modifier.clickable { onToneSelect(tone) },
                                     shape = RoundedCornerShape(8.dp),
@@ -997,7 +997,7 @@ fun FlowStudioTab(
                                 OutlinedButton(
                                     onClick = {
                                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                        clipboard.setPrimaryClip(ClipData.newPlainText("Chatot Clean Text", displayText))
+                                        clipboard.setPrimaryClip(ClipData.newPlainText("Clean Transcribed Text", displayText))
                                         Toast.makeText(context, "Copied to clipboard!", Toast.LENGTH_SHORT).show()
                                     },
                                     modifier = Modifier.weight(1f),
@@ -1011,7 +1011,7 @@ fun FlowStudioTab(
                                 Button(
                                     onClick = {
                                         onSaveAsNote("CTX-2024-08", true)
-                                        Toast.makeText(context, "Saved to Chatot Logs & Calendar!", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "Saved to Workspace Logs & Calendar!", Toast.LENGTH_SHORT).show()
                                     },
                                     modifier = Modifier.weight(1.2f),
                                     shape = RoundedCornerShape(10.dp),
@@ -1081,7 +1081,7 @@ fun FlowStudioTab(
 
                             Spacer(modifier = Modifier.height(12.dp))
 
-                            val transformList = WisprTransform.entries.toList()
+                            val transformList = VoiceTransform.entries.toList()
                             val chunkedList = transformList.chunked(2)
 
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1124,7 +1124,7 @@ fun FlowStudioTab(
                                 Button(
                                     onClick = {
                                         if (customCommandText.isNotBlank()) {
-                                            onRunTransform(WisprTransform.POLISH, customCommandText)
+                                            onRunTransform(VoiceTransform.POLISH, customCommandText)
                                         }
                                     },
                                     enabled = customCommandText.isNotBlank() && !isTransformLoading,
@@ -1292,7 +1292,7 @@ fun MeetingNotesCard(notes: StructuredMeetingNotes) {
                     onClick = {
                         val text = com.example.util.TextExportHelper.formatMeetingMinutesText(
                             meetingNotes = notes,
-                            chatotResult = null,
+                            voiceResult = null,
                             toneName = "Structured"
                         )
                         com.example.util.TextExportHelper.exportAndShareTextFile(
@@ -1315,7 +1315,7 @@ fun MeetingNotesCard(notes: StructuredMeetingNotes) {
                     onClick = {
                         val text = com.example.util.TextExportHelper.formatMeetingMinutesText(
                             meetingNotes = notes,
-                            chatotResult = null,
+                            voiceResult = null,
                             toneName = "Structured"
                         )
                         com.example.util.TextExportHelper.sharePlainText(
@@ -1426,7 +1426,7 @@ fun GeminiProcessingCard() {
             }
             Spacer(modifier = Modifier.height(14.dp))
             Text(
-                text = "Chatot AI Synthesizing Notes & Actions",
+                text = "Spatial AI Synthesizing Notes & Actions",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface

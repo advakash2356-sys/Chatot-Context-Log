@@ -16,11 +16,11 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /**
- * ChatotFlowEngine / WisprFlowEngine processes voice transcripts and raw audio through Gemini 3.5 Flash
+ * VoiceFlowEngine processes voice transcripts and raw audio through Gemini
  * with custom tone selection (Auto Clean, Formal, Casual, Concise, Professional), automatic speech cleanup,
  * snippet expansion, personal dictionary preservation, and structured meeting extraction.
  */
-class ChatotFlowEngine(
+class VoiceFlowEngine(
     private val apiKey: String = BuildConfig.GEMINI_API_KEY
 ) {
 
@@ -33,14 +33,14 @@ class ChatotFlowEngine(
     /**
      * Primary Flow Studio processing for dictation, snippets, dictionary terms, and tones.
      */
-    suspend fun processWisprFlow(
+    suspend fun processVoiceFlow(
         rawInput: String,
-        contextType: WisprContextType = WisprContextType.GENERAL,
-        tone: WisprTone = WisprTone.AUTO_CLEAN,
+        contextType: VoiceContextType = VoiceContextType.GENERAL,
+        tone: VoiceTone = VoiceTone.AUTO_CLEAN,
         dictionary: List<DictionaryItemEntity> = emptyList(),
         snippets: List<SnippetEntity> = emptyList(),
         targetLanguage: String? = null
-    ): WisprFlowResult = withContext(Dispatchers.IO) {
+    ): VoiceFlowResult = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
         if (rawInput.isBlank()) {
             return@withContext WisprFlowResult(
@@ -235,8 +235,9 @@ class ChatotFlowEngine(
                     TASK:
                     1. Remove filler words (um, uh, like, you know, actually, so basically) and resolve false starts or self-corrections.
                     2. Synthesize the core content according to the requested tone (${tone.displayName}).
-                    3. Extract clear, actionable next steps (actionItems) with owners and deadlines where implied.
-                    4. Identify key decisions or discussion points (keyPoints).
+                    3. Extract discrete, actionable tasks (extractedTasks) with title, priority (HIGH/MEDIUM/LOW), assignee (person name or 'You'), and dueDate (e.g. 'Today', 'Tomorrow', 'Friday 3pm').
+                    4. Check if the user is scheduling or mentioning an appointment, meeting, call, or deadline. If so, populate 'calendarEvent' with hasEvent=true, eventTitle, eventDescription, offsetMinutesFromNow (e.g. 60 for 1 hour from now, 1440 for tomorrow), durationMinutes (e.g. 30, 60), and location.
+                    5. Identify key decisions or discussion points (keyPoints).
                     
                     Output strictly JSON in this format:
                     {
@@ -246,6 +247,22 @@ class ChatotFlowEngine(
                         "Action item 1",
                         "Action item 2"
                       ],
+                      "extractedTasks": [
+                        {
+                          "title": "Clear task description",
+                          "priority": "HIGH",
+                          "assignee": "You",
+                          "dueDate": "Tomorrow, 5:00 PM"
+                        }
+                      ],
+                      "calendarEvent": {
+                        "hasEvent": false,
+                        "title": "Meeting Title",
+                        "description": "Meeting description",
+                        "offsetMinutesFromNow": 60,
+                        "durationMinutes": 60,
+                        "location": "Google Meet"
+                      },
                       "keyPoints": [
                         "Key decision or discussion point 1",
                         "Key decision or discussion point 2"
@@ -278,6 +295,49 @@ class ChatotFlowEngine(
                         }
                     }
 
+                    val extractedTasks = mutableListOf<ExtractedTask>()
+                    val taskArray = responseJson.optJSONArray("extractedTasks")
+                    if (taskArray != null) {
+                        for (i in 0 until taskArray.length()) {
+                            val tObj = taskArray.optJSONObject(i)
+                            if (tObj != null) {
+                                val tTitle = tObj.optString("title", "")
+                                if (tTitle.isNotBlank()) {
+                                    extractedTasks.add(
+                                        ExtractedTask(
+                                            title = tTitle,
+                                            priority = tObj.optString("priority", "HIGH"),
+                                            assignee = tObj.optString("assignee", "You"),
+                                            dueDate = tObj.optString("dueDate", "Today, 5:00 PM")
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    } else if (actionItems.isNotEmpty()) {
+                        actionItems.forEach { act ->
+                            extractedTasks.add(ExtractedTask(title = act, priority = "HIGH", assignee = "You", dueDate = "Today"))
+                        }
+                    }
+
+                    var calendarEvent: ExtractedCalendarEvent? = null
+                    val calObj = responseJson.optJSONObject("calendarEvent")
+                    if (calObj != null && calObj.optBoolean("hasEvent", false)) {
+                        val offsetMin = calObj.optLong("offsetMinutesFromNow", 60L).coerceAtLeast(0L)
+                        val durationMin = calObj.optLong("durationMinutes", 60L).coerceAtLeast(15L)
+                        val nowMs = System.currentTimeMillis()
+                        val startMs = nowMs + (offsetMin * 60 * 1000L)
+                        val endMs = startMs + (durationMin * 60 * 1000L)
+                        calendarEvent = ExtractedCalendarEvent(
+                            hasEvent = true,
+                            title = calObj.optString("title", title),
+                            description = calObj.optString("description", conciseSummary),
+                            startEpochMs = startMs,
+                            endEpochMs = endMs,
+                            location = calObj.optString("location", "")
+                        )
+                    }
+
                     val keyPoints = mutableListOf<String>()
                     val pointsArray = responseJson.optJSONArray("keyPoints")
                     if (pointsArray != null) {
@@ -292,6 +352,8 @@ class ChatotFlowEngine(
                         title = title,
                         executiveSummary = conciseSummary.ifBlank { cleanTranscript },
                         actionItems = actionItems,
+                        extractedTasks = extractedTasks,
+                        calendarEvent = calendarEvent,
                         keyDecisions = keyPoints,
                         timelineHighlights = listOf("Synthesized in ${System.currentTimeMillis() - startTime}ms via Gemini 3.5 Flash (${tone.displayName} Tone)")
                     )
@@ -305,6 +367,27 @@ class ChatotFlowEngine(
         val textToProcess = rawText ?: "Spoken note recorded via voice engine."
         val cleaned = fallbackSpeechCleanup(textToProcess)
         val fallbackActions = extractFallbackActionItems(cleaned)
+        val fallbackTasks = fallbackActions.map {
+            ExtractedTask(title = it, priority = "HIGH", assignee = "You", dueDate = "Today, 5:00 PM")
+        }
+
+        // Check if text has calendar scheduling keywords
+        val lower = cleaned.lowercase()
+        val hasCalIntent = lower.contains("meet") || lower.contains("schedule") || lower.contains("appointment") ||
+                lower.contains("tomorrow") || lower.contains("at ") || lower.contains("pm") || lower.contains("am")
+        val nowMs = System.currentTimeMillis()
+        val calEvent = if (hasCalIntent) {
+            val startMs = nowMs + 3600000L // 1 hour from now
+            ExtractedCalendarEvent(
+                hasEvent = true,
+                title = cleaned.take(40),
+                description = cleaned,
+                startEpochMs = startMs,
+                endEpochMs = startMs + 3600000L,
+                location = ""
+            )
+        } else null
+
         return@withContext StructuredMeetingNotes(
             title = when (tone) {
                 WisprTone.FORMAL -> "Executive Voice Debrief"
@@ -316,8 +399,10 @@ class ChatotFlowEngine(
                 WisprTone.CASUAL -> "Hey, quick update: $cleaned"
                 WisprTone.CONCISE, WisprTone.AUTO_CLEAN, WisprTone.PROFESSIONAL -> cleaned
             },
-            actionItems = if (fallbackActions.isNotEmpty()) fallbackActions else listOf("Review note takeaways with team", "Confirm next milestones"),
-            keyDecisions = listOf("Spoken notes recorded and indexed locally", "Transcribed in ${tone.displayName} tone"),
+            actionItems = if (fallbackActions.isNotEmpty()) fallbackActions else listOf("Review note takeaways with team"),
+            extractedTasks = fallbackTasks,
+            calendarEvent = calEvent,
+            keyDecisions = listOf("Spoken note recorded and indexed locally", "Transcribed in ${tone.displayName} tone"),
             timelineHighlights = listOf("Processed in ${System.currentTimeMillis() - startTime}ms")
         )
     }
@@ -606,14 +691,23 @@ class ChatotFlowEngine(
             WisprTransform.FIX_GRAMMAR -> cleaned
             WisprTransform.BULLETS -> cleaned.split(". ").filter { it.isNotBlank() }.joinToString("\n") { "• ${it.trim()}" }
             WisprTransform.TO_TASKS -> extractFallbackActionItems(cleaned).joinToString("\n") { "[ ] $it" }
-            WisprTransform.TO_EMAIL -> "Subject: Discussion Update\n\nDear Team,\n\n$cleaned\n\nBest regards,\nWispr Flow"
-            WisprTransform.TO_LINKEDIN -> "Key takeaway:\n\n$cleaned\n\n#Productivity #WisprFlow"
+            WisprTransform.TO_EMAIL -> "Subject: Discussion Update\n\nDear Team,\n\n$cleaned\n\nBest regards,\nExecutive Team"
+            WisprTransform.TO_LINKEDIN -> "Key takeaway:\n\n$cleaned\n\n#Productivity #VoiceFirst"
             WisprTransform.TO_PROMPT -> "Role: Expert\nPrompt: $cleaned\nFormat: Detailed actionable markdown"
             WisprTransform.SUMMARIZE -> "Executive Summary: $cleaned"
             WisprTransform.LONG_FORM_SYNTHESIS -> "# Meeting Minutes\n\n## Summary\n$cleaned\n\n## Action Items\n${extractFallbackActionItems(cleaned).joinToString("\n") { "• $it" }}"
             WisprTransform.TRANSLATE_EN -> cleaned
         }
     }
+    suspend fun processWisprFlow(
+        rawInput: String,
+        contextType: VoiceContextType = VoiceContextType.GENERAL,
+        tone: VoiceTone = VoiceTone.AUTO_CLEAN,
+        dictionary: List<DictionaryItemEntity> = emptyList(),
+        snippets: List<SnippetEntity> = emptyList(),
+        targetLanguage: String? = null
+    ): VoiceFlowResult = processVoiceFlow(rawInput, contextType, tone, dictionary, snippets, targetLanguage)
 }
 
-typealias WisprFlowEngine = ChatotFlowEngine
+typealias WisprFlowEngine = VoiceFlowEngine
+typealias ChatotFlowEngine = VoiceFlowEngine

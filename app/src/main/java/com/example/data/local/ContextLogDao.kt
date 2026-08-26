@@ -208,7 +208,7 @@ interface ContextLogDao {
     @Query("DELETE FROM token_usage_metrics WHERE timestamp < :beforeTimestamp")
     suspend fun deleteOldTokenUsage(beforeTimestamp: Long)
 
-    // NeoSapien Deterministic Action Items / Tasks
+    // Deterministic Action Items / Tasks
     @Query("SELECT * FROM action_items ORDER BY targetDueDate ASC, extractedAt DESC")
     fun getAllActionItems(): Flow<List<ActionItemEntity>>
 
@@ -242,7 +242,7 @@ interface ContextLogDao {
     @Query("DELETE FROM action_items WHERE id = :id")
     suspend fun deleteActionItem(id: String)
 
-    // NeoSapien Pre-Meeting Briefing Dossiers
+    // Pre-Meeting Briefing Dossiers
     @Query("SELECT * FROM briefing_dossiers ORDER BY generatedAt DESC")
     fun getAllBriefingDossiers(): Flow<List<BriefingDossierEntity>>
 

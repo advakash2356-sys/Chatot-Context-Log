@@ -5,6 +5,7 @@ import android.media.MediaRecorder
 import android.os.Build
 import android.util.Base64
 import android.util.Log
+import com.example.util.HapticFeedbackManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -28,6 +29,8 @@ class MediaRecorderManager(private val context: Context) {
     private var amplitudeJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.Default)
 
+    private val hapticFeedbackManager = HapticFeedbackManager.getInstance(context)
+
     private val _isRecording = MutableStateFlow(false)
     val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
 
@@ -45,6 +48,8 @@ class MediaRecorderManager(private val context: Context) {
      */
     fun startRecording(): Boolean {
         if (_isRecording.value) return true
+
+        hapticFeedbackManager.triggerRecordingStart()
 
         try {
             val cacheDir = context.cacheDir
@@ -92,6 +97,8 @@ class MediaRecorderManager(private val context: Context) {
         amplitudeJob = null
         _isRecording.value = false
         _amplitude.value = 0.05f
+
+        hapticFeedbackManager.triggerRecordingStop()
 
         val recorded = currentOutputFile
         try {

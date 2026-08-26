@@ -1,5 +1,10 @@
 package com.example.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,6 +33,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.ExpandLess
@@ -42,6 +48,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
@@ -72,17 +79,30 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.ai.NeoSapienHelper
+import com.example.data.ai.SpatialContextHelper
 import com.example.data.ai.SpeakerTurn
 import com.example.data.local.ContextNoteEntity
 import com.example.data.local.EntryType
+import com.example.ui.components.Spatial3DCard
+import com.example.ui.theme.AcidGreen
+import com.example.ui.theme.CyberBackground
+import com.example.ui.theme.CyberSurface
+import com.example.ui.theme.CyberSurfaceVariant
+import com.example.ui.theme.ElectricCyan
+import com.example.ui.theme.GlassBorder
 import com.example.ui.theme.M3Primary
 import com.example.ui.theme.M3PrimaryContainer
+import com.example.ui.theme.NeonAmber
+import com.example.ui.theme.NeonViolet
+import com.example.ui.theme.TextMuted
+import com.example.ui.theme.TextPrimary
+import com.example.ui.theme.TextSecondary
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -117,14 +137,15 @@ fun MemoriesTab(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // Ambient Pendant Streaming Bar
+        // Privacy & Storage status banner
         Surface(
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+            color = CyberSurface,
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .border(1.dp, GlassBorder)
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -137,13 +158,13 @@ fun MemoriesTab(
                         modifier = Modifier
                             .size(8.dp)
                             .clip(CircleShape)
-                            .background(if (pendantConnected) Color(0xFF34A853) else Color(0xFFEA4335))
+                            .background(AcidGreen)
                     )
                     Text(
-                        text = if (pendantConnected) "Pendant Live • Circular Buffer Healthy (300s Ring)" else "Pendant Disconnected",
+                        text = "Encrypted Local Storage • 100% Private",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = TextSecondary
                     )
                 }
 
@@ -155,13 +176,13 @@ fun MemoriesTab(
                         imageVector = Icons.Default.Lock,
                         contentDescription = null,
                         modifier = Modifier.size(12.dp),
-                        tint = Color(0xFF137333)
+                        tint = AcidGreen
                     )
                     Text(
-                        text = "Encrypted Local DB",
+                        text = "Private Vault",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF137333)
+                        color = AcidGreen
                     )
                 }
             }
@@ -176,22 +197,26 @@ fun MemoriesTab(
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = onSearchQueryChange,
-                placeholder = { Text("Search memories, transcripts, speakers...", fontSize = 14.sp) },
+                placeholder = { Text("Search memories, transcripts, speakers...", fontSize = 13.sp, color = TextMuted) },
                 leadingIcon = {
-                    Icon(Icons.Default.Search, contentDescription = "Search", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.Default.Search, contentDescription = "Search", tint = ElectricCyan)
                 },
                 trailingIcon = {
                     if (searchQuery.isNotBlank()) {
                         IconButton(onClick = { onSearchQueryChange("") }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Clear search")
+                            Icon(Icons.Default.Clear, contentDescription = "Clear search", tint = TextSecondary)
                         }
                     }
                 },
                 singleLine = true,
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(14.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = M3Primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                    focusedBorderColor = ElectricCyan,
+                    unfocusedBorderColor = GlassBorder,
+                    focusedContainerColor = CyberSurface,
+                    unfocusedContainerColor = CyberSurface,
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -205,28 +230,40 @@ fun MemoriesTab(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     item {
-                        FilterChip(
-                            selected = selectedTagFilter == null,
-                            onClick = { onTagFilterSelect(null) },
-                            label = { Text("All", fontSize = 12.sp) },
-                            shape = RoundedCornerShape(8.dp),
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = M3PrimaryContainer,
-                                selectedLabelColor = M3Primary
+                        val isAllSelected = selectedTagFilter == null
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isAllSelected) ElectricCyan else CyberSurface)
+                                .border(1.dp, if (isAllSelected) ElectricCyan else GlassBorder, RoundedCornerShape(10.dp))
+                                .clickable { onTagFilterSelect(null) }
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                "All",
+                                fontSize = 12.sp,
+                                fontWeight = if (isAllSelected) FontWeight.Black else FontWeight.Medium,
+                                color = if (isAllSelected) Color(0xFF07090E) else TextSecondary
                             )
-                        )
+                        }
                     }
                     items(availableTags) { tag ->
-                        FilterChip(
-                            selected = selectedTagFilter == tag,
-                            onClick = { onTagFilterSelect(if (selectedTagFilter == tag) null else tag) },
-                            label = { Text("#$tag", fontSize = 12.sp) },
-                            shape = RoundedCornerShape(8.dp),
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = M3PrimaryContainer,
-                                selectedLabelColor = M3Primary
+                        val isTagSelected = selectedTagFilter == tag
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isTagSelected) NeonViolet else CyberSurface)
+                                .border(1.dp, if (isTagSelected) NeonViolet else GlassBorder, RoundedCornerShape(10.dp))
+                                .clickable { onTagFilterSelect(if (selectedTagFilter == tag) null else tag) }
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                "#$tag",
+                                fontSize = 12.sp,
+                                fontWeight = if (isTagSelected) FontWeight.Black else FontWeight.Medium,
+                                color = if (isTagSelected) Color.White else TextSecondary
                             )
-                        )
+                        }
                     }
                 }
             }
@@ -305,7 +342,7 @@ fun MemoriesTab(
                 }
 
                 items(notes, key = { it.id }) { note ->
-                    NeoSapienMemoryCard(
+                    SpatialMemoryCard(
                         note = note,
                         onDeleteClick = { noteToDelete = note.id },
                         onSpeakClick = { text -> onSpeakText(text) },
@@ -367,7 +404,7 @@ fun MemoriesTab(
 }
 
 @Composable
-fun NeoSapienMemoryCard(
+fun SpatialMemoryCard(
     note: ContextNoteEntity,
     onDeleteClick: () -> Unit,
     onSpeakClick: (String) -> Unit,
@@ -380,13 +417,19 @@ fun NeoSapienMemoryCard(
 
     val formattedDate = SimpleDateFormat("MMM dd, yyyy • h:mm a", Locale.getDefault()).format(Date(note.recordedAt))
     val speakerTurns = remember(note.verbatimTurnsJson) {
-        NeoSapienHelper.parseSpeakerTurns(note.verbatimTurnsJson.ifBlank { note.rawTranscript })
+        SpatialContextHelper.parseSpeakerTurns(note.verbatimTurnsJson.ifBlank { note.rawTranscript })
     }
 
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    val cardAccent = when (note.source) {
+        "DESKTOP_LOOPBACK" -> ElectricCyan
+        "MANUAL_MIC" -> NeonAmber
+        else -> AcidGreen
+    }
+
+    Spatial3DCard(
+        shape = RoundedCornerShape(18.dp),
+        accentColor = cardAccent,
+        elevation = 6.dp,
         modifier = Modifier
             .fillMaxWidth()
             .testTag("memory_card_${note.id}")
@@ -408,16 +451,17 @@ fun NeoSapienMemoryCard(
                 ) {
                     // Source Icon Badge
                     val (sourceIcon, sourceLabel, sourceColor) = when (note.source) {
-                        "DESKTOP_LOOPBACK" -> Triple(Icons.Default.Laptop, "Desktop Audio", Color(0xFF1A73E8))
-                        "MANUAL_MIC" -> Triple(Icons.Default.Mic, "Phone Mic", Color(0xFFE37400))
-                        else -> Triple(Icons.Default.BluetoothConnected, "Pendant BLE", Color(0xFF188038))
+                        "DESKTOP_LOOPBACK" -> Triple(Icons.Default.Laptop, "Desktop Audio", ElectricCyan)
+                        "MANUAL_MIC" -> Triple(Icons.Default.Mic, "Phone Mic", NeonAmber)
+                        else -> Triple(Icons.Default.BluetoothConnected, "Pendant BLE", AcidGreen)
                     }
 
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(sourceColor.copy(alpha = 0.12f))
-                            .padding(horizontal = 7.dp, vertical = 3.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(sourceColor.copy(alpha = 0.14f))
+                            .border(1.dp, sourceColor.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -431,16 +475,17 @@ fun NeoSapienMemoryCard(
                     // Duration pill
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .padding(horizontal = 6.dp, vertical = 3.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(CyberSurfaceVariant)
+                            .border(1.dp, GlassBorder, RoundedCornerShape(8.dp))
+                            .padding(horizontal = 7.dp, vertical = 3.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
-                            Icon(Icons.Default.AccessTime, contentDescription = null, modifier = Modifier.size(11.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("${note.durationSeconds}s", fontSize = 11.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Icon(Icons.Default.AccessTime, contentDescription = null, modifier = Modifier.size(11.dp), tint = TextSecondary)
+                            Text("${note.durationSeconds}s", fontSize = 11.sp, fontWeight = FontWeight.Medium, color = TextSecondary)
                         }
                     }
                 }
@@ -452,13 +497,13 @@ fun NeoSapienMemoryCard(
                     Text(
                         text = formattedDate,
                         fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = TextMuted
                     )
                     IconButton(
                         onClick = onDeleteClick,
                         modifier = Modifier.size(28.dp)
                     ) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.outline)
+                        Icon(Icons.Default.Delete, contentDescription = "Delete", modifier = Modifier.size(16.dp), tint = TextMuted)
                     }
                 }
             }
@@ -470,7 +515,7 @@ fun NeoSapienMemoryCard(
                 text = note.title.ifBlank { note.cleanText.take(50) },
                 fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
+                color = TextPrimary
             )
 
             if (note.participants.isNotBlank()) {
@@ -479,12 +524,12 @@ fun NeoSapienMemoryCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(13.dp), tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(13.dp), tint = ElectricCyan)
                     Text(
                         text = "Speakers: ${note.participants}",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.primary
+                        color = ElectricCyan
                     )
                 }
             }
@@ -494,24 +539,32 @@ fun NeoSapienMemoryCard(
             // View Format Switcher Tabs
             TabRow(
                 selectedTabIndex = selectedFormat.ordinal,
+                containerColor = CyberSurfaceVariant,
+                contentColor = ElectricCyan,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    .clip(RoundedCornerShape(12.dp))
+                    .border(1.dp, GlassBorder, RoundedCornerShape(12.dp))
             ) {
                 Tab(
                     selected = selectedFormat == MemoryViewFormat.EXECUTIVE_SUMMARY,
                     onClick = { selectedFormat = MemoryViewFormat.EXECUTIVE_SUMMARY },
-                    text = { Text("Executive Summary", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) }
+                    text = { Text("Executive Summary", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                    selectedContentColor = ElectricCyan,
+                    unselectedContentColor = TextSecondary
                 )
                 Tab(
                     selected = selectedFormat == MemoryViewFormat.STRUCTURED_NOTES,
                     onClick = { selectedFormat = MemoryViewFormat.STRUCTURED_NOTES },
-                    text = { Text("Structured Notes", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) }
+                    text = { Text("Structured Notes", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                    selectedContentColor = ElectricCyan,
+                    unselectedContentColor = TextSecondary
                 )
                 Tab(
                     selected = selectedFormat == MemoryViewFormat.VERBATIM_TURNS,
                     onClick = { selectedFormat = MemoryViewFormat.VERBATIM_TURNS },
-                    text = { Text("Diarised Turns", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) }
+                    text = { Text("Diarised Turns", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                    selectedContentColor = ElectricCyan,
+                    unselectedContentColor = TextSecondary
                 )
             }
 
@@ -526,8 +579,9 @@ fun NeoSapienMemoryCard(
                         "• ${note.cleanText}"
                     }
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                        shape = RoundedCornerShape(12.dp),
+                        color = CyberSurfaceVariant.copy(alpha = 0.6f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
@@ -535,7 +589,7 @@ fun NeoSapienMemoryCard(
                                 text = summaryText,
                                 fontSize = 13.sp,
                                 lineHeight = 20.sp,
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = TextPrimary
                             )
                         }
                     }
@@ -548,8 +602,9 @@ fun NeoSapienMemoryCard(
                         "### Overview\n${note.cleanText}"
                     }
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                        shape = RoundedCornerShape(12.dp),
+                        color = CyberSurfaceVariant.copy(alpha = 0.6f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
@@ -557,7 +612,7 @@ fun NeoSapienMemoryCard(
                                 text = structured,
                                 fontSize = 13.sp,
                                 lineHeight = 19.sp,
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = TextPrimary
                             )
                         }
                     }
@@ -587,20 +642,100 @@ fun NeoSapienMemoryCard(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                .background(NeonViolet.copy(alpha = 0.18f))
+                                .border(1.dp, NeonViolet.copy(alpha = 0.35f), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 7.dp, vertical = 2.dp)
                         ) {
-                            Text("#$tag", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                            Text("#$tag", fontSize = 11.sp, color = Color(0xFFDDD6FE), fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
                 Spacer(modifier = Modifier.height(10.dp))
             }
 
+            // Quick Action Buttons Bar (Copy, WhatsApp, TTS, Purge)
+            val context = LocalContext.current
+            val textToCopy = note.executiveSummary.ifBlank { note.cleanText }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 1-Tap Copy
+                Button(
+                    onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("Memory Note", textToCopy))
+                        Toast.makeText(context, "Note Copied! 📋", Toast.LENGTH_SHORT).show()
+                    },
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = CyberSurfaceVariant,
+                        contentColor = ElectricCyan
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Copy", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+
+                // 1-Tap WhatsApp Share
+                Button(
+                    onClick = {
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, "*${note.title}*\n\n$textToCopy")
+                            setPackage("com.whatsapp")
+                        }
+                        try {
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            val chooser = Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, "*${note.title}*\n\n$textToCopy")
+                            }, "Share Memory Note")
+                            context.startActivity(chooser)
+                        }
+                    },
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF25D366),
+                        contentColor = Color(0xFF020617)
+                    ),
+                    modifier = Modifier.weight(1.1f)
+                ) {
+                    Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("WhatsApp", fontSize = 11.sp, fontWeight = FontWeight.Black)
+                }
+
+                // Speak TTS Button
+                Button(
+                    onClick = { onSpeakClick(textToCopy) },
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = NeonViolet.copy(alpha = 0.2f),
+                        contentColor = Color(0xFFDDD6FE)
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.VolumeUp, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Listen", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
             // Audio Player & Immediate Audio Purge Bar
             Surface(
                 shape = RoundedCornerShape(10.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                color = CyberSurfaceVariant.copy(alpha = 0.5f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
