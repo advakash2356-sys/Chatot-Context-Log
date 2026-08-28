@@ -21,13 +21,26 @@ import java.util.concurrent.TimeUnit
  * snippet expansion, personal dictionary preservation, and structured meeting extraction.
  */
 class VoiceFlowEngine(
-    private val apiKey: String = BuildConfig.GEMINI_API_KEY
+    customApiKey: String? = null
 ) {
+    private val configuredKey: String? = customApiKey
+    private val apiKey: String
+        get() {
+            if (!configuredKey.isNullOrBlank() && configuredKey != "MY_GEMINI_API_KEY" && !configuredKey.startsWith("YOUR_")) {
+                return configuredKey
+            }
+            return try {
+                val key = BuildConfig.GEMINI_API_KEY
+                if (key.isNotBlank() && key != "MY_GEMINI_API_KEY" && !key.startsWith("YOUR_")) key else ""
+            } catch (e: Exception) {
+                ""
+            }
+        }
 
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
+        .connectTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
         .build()
 
     /**
@@ -371,38 +384,57 @@ class VoiceFlowEngine(
             ExtractedTask(title = it, priority = "HIGH", assignee = "You", dueDate = "Today, 5:00 PM")
         }
 
+        // Generate dynamic title based on the content
+        val dynamicTitle = run {
+            val sentences = cleaned.split(Regex("[.!?\\n]+")).filter { it.isNotBlank() }
+            val firstSentence = sentences.firstOrNull()?.trim() ?: cleaned
+            val words = firstSentence.split(" ").filter { it.isNotBlank() }
+            if (words.size <= 6) {
+                firstSentence.replaceFirstChar { it.uppercase() }
+            } else {
+                words.take(5).joinToString(" ").replaceFirstChar { it.uppercase() }
+            }
+        }
+
         // Check if text has calendar scheduling keywords
         val lower = cleaned.lowercase()
         val hasCalIntent = lower.contains("meet") || lower.contains("schedule") || lower.contains("appointment") ||
-                lower.contains("tomorrow") || lower.contains("at ") || lower.contains("pm") || lower.contains("am")
+                lower.contains("tomorrow") || lower.contains("at ") || lower.contains("pm") || lower.contains("am") ||
+                lower.contains("call with") || lower.contains("discussion with")
         val nowMs = System.currentTimeMillis()
         val calEvent = if (hasCalIntent) {
             val startMs = nowMs + 3600000L // 1 hour from now
+            val eventTitle = if (dynamicTitle.isNotBlank()) dynamicTitle else "Scheduled Meeting"
             ExtractedCalendarEvent(
                 hasEvent = true,
-                title = cleaned.take(40),
+                title = eventTitle,
                 description = cleaned,
                 startEpochMs = startMs,
                 endEpochMs = startMs + 3600000L,
-                location = ""
+                location = if (lower.contains("zoom") || lower.contains("meet")) "Google Meet / Video" else ""
             )
         } else null
 
+        val keyPoints = run {
+            val sentences = cleaned.split(Regex("[.!?\\n]+")).filter { it.isNotBlank() && it.length > 5 }
+            if (sentences.size > 1) {
+                sentences.take(3).map { it.trim().replaceFirstChar { c -> c.uppercase() } }
+            } else {
+                listOf(cleaned.trim().replaceFirstChar { it.uppercase() })
+            }
+        }
+
         return@withContext StructuredMeetingNotes(
-            title = when (tone) {
-                WisprTone.FORMAL -> "Executive Voice Debrief"
-                WisprTone.CASUAL -> "Quick Catch-up Note"
-                WisprTone.CONCISE, WisprTone.AUTO_CLEAN, WisprTone.PROFESSIONAL -> "Voice Note Summary"
-            },
+            title = dynamicTitle.ifBlank { "Voice Note Summary" },
             executiveSummary = when (tone) {
-                WisprTone.FORMAL -> "Pursuant to the recorded discussion: $cleaned"
-                WisprTone.CASUAL -> "Hey, quick update: $cleaned"
+                WisprTone.FORMAL -> "Executive Summary: $cleaned"
+                WisprTone.CASUAL -> "Quick Catch-up: $cleaned"
                 WisprTone.CONCISE, WisprTone.AUTO_CLEAN, WisprTone.PROFESSIONAL -> cleaned
             },
-            actionItems = if (fallbackActions.isNotEmpty()) fallbackActions else listOf("Review note takeaways with team"),
+            actionItems = if (fallbackActions.isNotEmpty()) fallbackActions else emptyList(),
             extractedTasks = fallbackTasks,
             calendarEvent = calEvent,
-            keyDecisions = listOf("Spoken note recorded and indexed locally", "Transcribed in ${tone.displayName} tone"),
+            keyDecisions = keyPoints,
             timelineHighlights = listOf("Processed in ${System.currentTimeMillis() - startTime}ms")
         )
     }
