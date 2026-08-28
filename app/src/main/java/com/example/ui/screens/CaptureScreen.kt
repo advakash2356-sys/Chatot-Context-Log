@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.KeyboardArrowRight
@@ -82,6 +83,7 @@ fun CaptureScreen(
   micAmplitude: Float,
   toastMessage: RoutingToast?,
   vaultItemCount: Int,
+  episodicItemCount: Int = 0,
   inlineDictationTarget: String? = null,
   onStartListening: () -> Unit,
   onStopListening: () -> Unit,
@@ -89,6 +91,7 @@ fun CaptureScreen(
   onUpdateVerifiedText: (String) -> Unit,
   onSaveAndProcess: (String?) -> Unit,
   onNavigateToVault: () -> Unit,
+  onNavigateToEpisodic: () -> Unit = {},
   onStartInlineDictation: (String, String, (String) -> Unit) -> Unit = { _, _, _ -> },
   onStopInlineDictation: () -> Unit = {},
   modifier: Modifier = Modifier
@@ -105,12 +108,14 @@ fun CaptureScreen(
         .verticalScroll(scrollState),
       horizontalAlignment = Alignment.CenterHorizontally
     ) {
-      // Top Minimalist View Switcher [ CAPTURE | VAULT (N) ]
+      // Top Minimalist View Switcher [ CAPTURE | VAULT (N) | EPISODIC (M) ]
       MinimalistViewSwitcher(
         activeView = MainAppView.CAPTURE,
         vaultCount = vaultItemCount,
+        episodicCount = episodicItemCount,
         onSelectCapture = {},
-        onSelectVault = onNavigateToVault
+        onSelectVault = onNavigateToVault,
+        onSelectEpisodic = onNavigateToEpisodic
       )
 
       Spacer(modifier = Modifier.height(28.dp))
@@ -140,7 +145,8 @@ fun CaptureScreen(
                     manualTextInput = updated
                   }
                 }
-              }
+              },
+              onNavigateToEpisodic = onNavigateToEpisodic
             )
           }
 
@@ -212,14 +218,16 @@ fun CaptureScreen(
 }
 
 /**
- * Clean Top Segmented Switcher
+ * Clean Top Segmented Switcher supporting [ CAPTURE | VAULT | EPISODIC ]
  */
 @Composable
 fun MinimalistViewSwitcher(
   activeView: MainAppView,
   vaultCount: Int,
+  episodicCount: Int = 0,
   onSelectCapture: () -> Unit,
   onSelectVault: () -> Unit,
+  onSelectEpisodic: () -> Unit = {},
   modifier: Modifier = Modifier
 ) {
   Row(
@@ -231,7 +239,7 @@ fun MinimalistViewSwitcher(
       .padding(4.dp),
     horizontalArrangement = Arrangement.spacedBy(4.dp)
   ) {
-    // Capture Tab Button
+    // 1. Capture Tab Button
     Box(
       modifier = Modifier
         .weight(1f)
@@ -257,20 +265,20 @@ fun MinimalistViewSwitcher(
             .clip(CircleShape)
             .background(if (activeView == MainAppView.CAPTURE) ActiveAccent else MonoTextMuted)
         )
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(6.dp))
         Text(
           text = "CAPTURE",
           style = TextStyle(
             color = if (activeView == MainAppView.CAPTURE) MonoWhite else MonoTextSecondary,
-            fontSize = 13.sp,
+            fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp
+            letterSpacing = 0.5.sp
           )
         )
       }
     }
 
-    // Vault Tab Button
+    // 2. Vault Tab Button
     Box(
       modifier = Modifier
         .weight(1f)
@@ -294,24 +302,81 @@ fun MinimalistViewSwitcher(
           text = "VAULT",
           style = TextStyle(
             color = if (activeView == MainAppView.VAULT) MonoWhite else MonoTextSecondary,
-            fontSize = 13.sp,
+            fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp
+            letterSpacing = 0.5.sp
           )
         )
         if (vaultCount > 0) {
-          Spacer(modifier = Modifier.width(6.dp))
+          Spacer(modifier = Modifier.width(4.dp))
           Box(
             modifier = Modifier
               .clip(RoundedCornerShape(6.dp))
               .background(MonoBorder)
-              .padding(horizontal = 6.dp, vertical = 2.dp)
+              .padding(horizontal = 5.dp, vertical = 1.dp)
           ) {
             Text(
               text = "$vaultCount",
               style = TextStyle(
                 color = MonoTextSecondary,
-                fontSize = 11.sp,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+              )
+            )
+          }
+        }
+      }
+    }
+
+    // 3. Episodic Memory Tab Button
+    Box(
+      modifier = Modifier
+        .weight(1.1f)
+        .clip(RoundedCornerShape(8.dp))
+        .background(if (activeView == MainAppView.EPISODIC) MonoSurfaceElevated else Color.Transparent)
+        .border(
+          width = if (activeView == MainAppView.EPISODIC) 1.dp else 0.dp,
+          color = if (activeView == MainAppView.EPISODIC) ActiveAccent else Color.Transparent,
+          shape = RoundedCornerShape(8.dp)
+        )
+        .clickable { onSelectEpisodic() }
+        .padding(vertical = 10.dp)
+        .testTag("nav_tab_episodic"),
+      contentAlignment = Alignment.Center
+    ) {
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+      ) {
+        Icon(
+          imageVector = Icons.Default.AutoAwesome,
+          contentDescription = null,
+          tint = if (activeView == MainAppView.EPISODIC) ActiveAccent else MonoTextSecondary,
+          modifier = Modifier.size(13.dp)
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+          text = "EPISODIC",
+          style = TextStyle(
+            color = if (activeView == MainAppView.EPISODIC) ActiveAccent else MonoTextSecondary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.5.sp
+          )
+        )
+        if (episodicCount > 0) {
+          Spacer(modifier = Modifier.width(4.dp))
+          Box(
+            modifier = Modifier
+              .clip(RoundedCornerShape(6.dp))
+              .background(if (activeView == MainAppView.EPISODIC) ActiveAccentSubtle else MonoBorder)
+              .padding(horizontal = 5.dp, vertical = 1.dp)
+          ) {
+            Text(
+              text = "$episodicCount",
+              style = TextStyle(
+                color = if (activeView == MainAppView.EPISODIC) ActiveAccent else MonoTextSecondary,
+                fontSize = 10.sp,
                 fontWeight = FontWeight.Bold
               )
             )
@@ -332,7 +397,8 @@ private fun IdleStateView(
   onManualTextChange: (String) -> Unit,
   onStartListening: () -> Unit,
   onSubmitManualText: (String) -> Unit,
-  onToggleInlineDictate: () -> Unit
+  onToggleInlineDictate: () -> Unit,
+  onNavigateToEpisodic: () -> Unit = {}
 ) {
   Column(
     modifier = Modifier.fillMaxWidth(),
@@ -363,7 +429,7 @@ private fun IdleStateView(
       modifier = Modifier.padding(horizontal = 16.dp)
     )
 
-    Spacer(modifier = Modifier.height(48.dp))
+    Spacer(modifier = Modifier.height(40.dp))
 
     // Primary Tactile Capture Button
     Box(
@@ -408,7 +474,83 @@ private fun IdleStateView(
       )
     )
 
-    Spacer(modifier = Modifier.height(48.dp))
+    Spacer(modifier = Modifier.height(36.dp))
+
+    // Dedicated Episodic Memory Feature Entry Box
+    Box(
+      modifier = Modifier
+        .fillMaxWidth()
+        .clip(RoundedCornerShape(12.dp))
+        .background(MonoSurface)
+        .border(1.dp, ActiveAccent.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+        .clickable { onNavigateToEpisodic() }
+        .padding(14.dp)
+        .testTag("episodic_entry_box")
+    ) {
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Row(
+          modifier = Modifier.weight(1f),
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Box(
+            modifier = Modifier
+              .size(36.dp)
+              .clip(CircleShape)
+              .background(ActiveAccentSubtle),
+            contentAlignment = Alignment.Center
+          ) {
+            Icon(
+              imageVector = Icons.Default.AutoAwesome,
+              contentDescription = null,
+              tint = ActiveAccent,
+              modifier = Modifier.size(20.dp)
+            )
+          }
+          Spacer(modifier = Modifier.width(12.dp))
+          Column {
+            Text(
+              text = "EPISODIC MEMORY ENGINE",
+              style = TextStyle(
+                color = MonoWhite,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.8.sp
+              )
+            )
+            Text(
+              text = "Extract eras, people graphs, sensory cues & tone",
+              style = TextStyle(
+                color = MonoTextSecondary,
+                fontSize = 11.sp
+              )
+            )
+          }
+        }
+
+        Box(
+          modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(ActiveAccent)
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+        ) {
+          Text(
+            text = "OPEN",
+            style = TextStyle(
+              color = MonoBackground,
+              fontSize = 11.sp,
+              fontWeight = FontWeight.Bold,
+              letterSpacing = 0.5.sp
+            )
+          )
+        }
+      }
+    }
+
+    Spacer(modifier = Modifier.height(16.dp))
 
     // Minimalist Manual Input Card with Hovering Dictation Button
     Column(
@@ -448,7 +590,7 @@ private fun IdleStateView(
 
       BasicTextField(
         value = manualText,
-        onValueChange = onManualTextChange,
+        onManualTextChange,
         textStyle = TextStyle(
           color = MonoTextPrimary,
           fontSize = 14.sp,

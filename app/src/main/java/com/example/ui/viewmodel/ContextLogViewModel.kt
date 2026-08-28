@@ -5,6 +5,8 @@ import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.ai.GeminiService
+import com.example.data.ai.MemoryGuideMessage
+import com.example.data.ai.GuideSender
 import com.example.data.ai.StructuredMeetingNotes
 import com.example.data.ai.VoiceContextType
 import com.example.data.ai.VoiceFlowEngine
@@ -16,6 +18,11 @@ import com.example.data.ai.WisprFlowEngine
 import com.example.data.ai.WisprFlowResult
 import com.example.data.ai.WisprTone
 import com.example.data.ai.WisprTransform
+import com.example.data.ai.GeminiMultimodalLiveClient
+import com.example.data.ai.LiveConnectionStatus
+import com.example.data.ai.LiveMetrics
+import com.example.data.ai.ToolCallInfo
+import com.example.data.audio.LiveAudioStreamManager
 import com.example.data.audio.MediaRecorderManager
 import com.example.data.audio.SpeechDictationManager
 import com.example.data.audio.TextToSpeechHelper
@@ -42,6 +49,7 @@ import com.example.data.sync.CloudBackupManager
 import com.example.data.sync.GoogleCalendarSyncWorker
 import com.example.ui.theme.ThemeMode
 import com.google.firebase.auth.FirebaseUser
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -54,6 +62,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.util.Calendar
 
@@ -67,14 +76,16 @@ enum class DictationState {
 
 enum class MainAppView {
   CAPTURE,
-  VAULT
+  VAULT,
+  EPISODIC
 }
 
 enum class VaultFilter {
   ALL,
   NOTES,
   TASKS,
-  CALENDAR
+  CALENDAR,
+  REPORTS
 }
 
 data class RoutingToast(
@@ -86,7 +97,7 @@ data class RoutingToast(
 )
 
 data class ContextLogUiState(
-  // Primary 2-view navigation & state machine
+  // Primary 3-view navigation & state machine
   val activeView: MainAppView = MainAppView.CAPTURE,
   val dictationState: DictationState = DictationState.IDLE,
   val liveTranscript: String = "",
@@ -99,6 +110,41 @@ data class ContextLogUiState(
   val inlineDictationTarget: String? = null,
   val vaultFilter: VaultFilter = VaultFilter.ALL,
   val vaultSearchQuery: String = "",
+
+  // Episodic Memory Ingestion Engine State
+  val episodicMemories: List<com.example.data.local.EpisodicMemoryEntity> = emptyList(),
+  val isIngestingEpisodic: Boolean = false,
+  val episodicIngestStage: String = "",
+  val episodicSearchQuery: String = "",
+  val selectedLifeStageFilter: String? = null,
+  val selectedValenceFilter: String? = null,
+  val selectedEpisodicMemory: com.example.data.local.EpisodicMemoryEntity? = null,
+  val probingGapQuestion: String? = null,
+  val probeAnswerText: String = "",
+  val isProbingLoading: Boolean = false,
+  val episodicInputText: String = "",
+  val episodicImageDesc: String = "",
+
+  // Interactive Memory Exploration Guide State
+  val isGuideSessionActive: Boolean = false,
+  val guideConversationMessages: List<MemoryGuideMessage> = emptyList(),
+  val isGuideThinking: Boolean = false,
+  val isGuideSpeaking: Boolean = false,
+  val isGuideTtsEnabled: Boolean = true,
+  val guideInputText: String = "",
+  val activeExploringMemory: com.example.data.local.EpisodicMemoryEntity? = null,
+
+  // Phase 4: Gemini Multimodal Live API UI State
+  val isLiveMultimodalActive: Boolean = false,
+  val selectedLiveVoice: String = "Aoede",
+  val liveConnectionStatus: LiveConnectionStatus = LiveConnectionStatus.DISCONNECTED,
+  val liveMetrics: LiveMetrics = LiveMetrics(),
+  val liveStatusMessage: String = "Ready to connect",
+  val liveMicAmplitude: Float = 0f,
+  val liveSpeakerAmplitude: Float = 0f,
+  val isLiveBargeInActive: Boolean = false,
+  val isLiveRecordingMic: Boolean = false,
+  val isLivePlayingSpeaker: Boolean = false,
 
   val activeTab: Int = 0,
   val todayHours: Double = 0.0,
@@ -207,6 +253,8 @@ class ContextLogViewModel(application: Application) : AndroidViewModel(applicati
   val textToSpeechHelper: TextToSpeechHelper = TextToSpeechHelper(application)
   val mediaRecorderManager: MediaRecorderManager = MediaRecorderManager(application)
   val cloudBackupManager: CloudBackupManager = CloudBackupManager(application)
+  val liveAudioStreamManager: LiveAudioStreamManager = LiveAudioStreamManager(application)
+  val geminiLiveClient: GeminiMultimodalLiveClient = GeminiMultimodalLiveClient()
   private val wisprEngine: WisprFlowEngine = WisprFlowEngine()
 
   private val appPrefs = application.getSharedPreferences("context_log_app_prefs", Context.MODE_PRIVATE)
@@ -242,6 +290,76 @@ class ContextLogViewModel(application: Application) : AndroidViewModel(applicati
 
   private val _vaultSearchQuery = MutableStateFlow("")
   val vaultSearchQuery: StateFlow<String> = _vaultSearchQuery.asStateFlow()
+
+  // Episodic Memory Ingestion State
+  private val _isIngestingEpisodic = MutableStateFlow(false)
+  val isIngestingEpisodic: StateFlow<Boolean> = _isIngestingEpisodic.asStateFlow()
+
+  private val _episodicIngestStage = MutableStateFlow("")
+  val episodicIngestStage: StateFlow<String> = _episodicIngestStage.asStateFlow()
+
+  private val _episodicSearchQuery = MutableStateFlow("")
+  val episodicSearchQuery: StateFlow<String> = _episodicSearchQuery.asStateFlow()
+
+  private val _selectedLifeStageFilter = MutableStateFlow<String?>(null)
+  val selectedLifeStageFilter: StateFlow<String?> = _selectedLifeStageFilter.asStateFlow()
+
+  private val _selectedValenceFilter = MutableStateFlow<String?>(null)
+  val selectedValenceFilter: StateFlow<String?> = _selectedValenceFilter.asStateFlow()
+
+  private val _selectedEpisodicMemory = MutableStateFlow<com.example.data.local.EpisodicMemoryEntity?>(null)
+  val selectedEpisodicMemory: StateFlow<com.example.data.local.EpisodicMemoryEntity?> = _selectedEpisodicMemory.asStateFlow()
+
+  private val _probingGapQuestion = MutableStateFlow<String?>(null)
+  val probingGapQuestion: StateFlow<String?> = _probingGapQuestion.asStateFlow()
+
+  private val _probeAnswerText = MutableStateFlow("")
+  val probeAnswerText: StateFlow<String> = _probeAnswerText.asStateFlow()
+
+  private val _isProbingLoading = MutableStateFlow(false)
+  val isProbingLoading: StateFlow<Boolean> = _isProbingLoading.asStateFlow()
+
+  private val _episodicInputText = MutableStateFlow("")
+  val episodicInputText: StateFlow<String> = _episodicInputText.asStateFlow()
+
+  private val _episodicImageDesc = MutableStateFlow("")
+  val episodicImageDesc: StateFlow<String> = _episodicImageDesc.asStateFlow()
+
+  // Interactive Memory Exploration Guide state flows
+  private val _isGuideSessionActive = MutableStateFlow(false)
+  val isGuideSessionActive: StateFlow<Boolean> = _isGuideSessionActive.asStateFlow()
+
+  private val _guideConversationMessages = MutableStateFlow<List<MemoryGuideMessage>>(emptyList())
+  val guideConversationMessages: StateFlow<List<MemoryGuideMessage>> = _guideConversationMessages.asStateFlow()
+
+  private val _isGuideThinking = MutableStateFlow(false)
+  val isGuideThinking: StateFlow<Boolean> = _isGuideThinking.asStateFlow()
+
+  private val _isGuideTtsEnabled = MutableStateFlow(true)
+  val isGuideTtsEnabled: StateFlow<Boolean> = _isGuideTtsEnabled.asStateFlow()
+
+  private val _guideInputText = MutableStateFlow("")
+  val guideInputText: StateFlow<String> = _guideInputText.asStateFlow()
+
+  private val _activeExploringMemory = MutableStateFlow<com.example.data.local.EpisodicMemoryEntity?>(null)
+  val activeExploringMemory: StateFlow<com.example.data.local.EpisodicMemoryEntity?> = _activeExploringMemory.asStateFlow()
+
+  // Phase 4: Gemini Multimodal Live API State Flows
+  private val _isLiveMultimodalActive = MutableStateFlow(false)
+  val isLiveMultimodalActive: StateFlow<Boolean> = _isLiveMultimodalActive.asStateFlow()
+
+  private val _selectedLiveVoice = MutableStateFlow("Aoede")
+  val selectedLiveVoice: StateFlow<String> = _selectedLiveVoice.asStateFlow()
+
+  val liveConnectionStatus: StateFlow<LiveConnectionStatus> = geminiLiveClient.connectionStatus
+  val liveMetrics: StateFlow<LiveMetrics> = geminiLiveClient.liveMetrics
+  val liveStatusMessage: StateFlow<String> = geminiLiveClient.statusMessage
+  val liveMicAmplitude: StateFlow<Float> = liveAudioStreamManager.micAmplitude
+  val liveSpeakerAmplitude: StateFlow<Float> = liveAudioStreamManager.speakerAmplitude
+  val isLivePlayingSpeaker: StateFlow<Boolean> = liveAudioStreamManager.isPlaying
+  val isLiveRecordingMic: StateFlow<Boolean> = liveAudioStreamManager.isRecording
+  val isLiveBargeInActive: StateFlow<Boolean> = liveAudioStreamManager.isBargeInActive
+  val liveTranscripts = geminiLiveClient.liveTranscripts
 
   private val _themeMode = MutableStateFlow(
     try {
@@ -355,6 +473,38 @@ class ContextLogViewModel(application: Application) : AndroidViewModel(applicati
         speechDictationManager.setCustomSnippets(combinedMap)
       }
     }
+
+    // Wire Gemini Multimodal Live API dispatcher, audio streaming, and barge-in
+    geminiLiveClient.onToolCallDispatcher = { funcName, args ->
+      handleLiveToolExecution(funcName, args)
+    }
+
+    viewModelScope.launch {
+      geminiLiveClient.receivedAudioPcm.collect { pcm24k ->
+        liveAudioStreamManager.writeSpeakerPcm(pcm24k)
+      }
+    }
+
+    viewModelScope.launch {
+      geminiLiveClient.interruptionEvents.collect {
+        liveAudioStreamManager.flushSpeakerBuffer("Gemini live barge-in interruption")
+      }
+    }
+
+    viewModelScope.launch {
+      geminiLiveClient.toolExecutions.collect { toolInfo ->
+        val msg = MemoryGuideMessage(
+          sender = GuideSender.GUIDE,
+          text = if (toolInfo.toolName == "retrieve_memories") {
+            "Consulting archive: ${toolInfo.resultSummary}"
+          } else {
+            "Updated memory archive: ${toolInfo.resultSummary}"
+          },
+          executedTools = listOf(toolInfo)
+        )
+        _guideConversationMessages.value = _guideConversationMessages.value + msg
+      }
+    }
   }
 
   // Combined UI Nav & Search State
@@ -416,11 +566,18 @@ class ContextLogViewModel(application: Application) : AndroidViewModel(applicati
     repository.allMatters,
     repository.allRollups,
     repository.allDocuments,
-    combine(repository.chunkCount, repository.allCalendarEvents, repository.allTokenUsage, repository.allActionItems, repository.allBriefingDossiers) { chunks, calEvents, tokens, actions, dossiers ->
-      DbExtras(chunks, calEvents, tokens, actions, dossiers)
+    combine(
+      repository.chunkCount,
+      repository.allCalendarEvents,
+      repository.allTokenUsage,
+      combine(repository.allActionItems, repository.allBriefingDossiers, repository.allEpisodicMemories) { actions, dossiers, episodicMemories ->
+        Triple(actions, dossiers, episodicMemories)
+      }
+    ) { chunks, calEvents, tokens, (actions, dossiers, episodicMemories) ->
+      DbExtras(chunks, calEvents, tokens, actions, dossiers, episodicMemories)
     }
   ) { allNotes, allMatters, allRollups, allDocs, extras ->
-    DbState(allNotes, allMatters, allRollups, allDocs, extras.liveChunkCount, extras.calendarEvents, extras.tokenMetrics, extras.actionItems, extras.briefingDossiers)
+    DbState(allNotes, allMatters, allRollups, allDocs, extras.liveChunkCount, extras.calendarEvents, extras.tokenMetrics, extras.actionItems, extras.briefingDossiers, extras.episodicMemories)
   }
 
   // Combined Auth & Backup Flow
@@ -547,6 +704,41 @@ class ContextLogViewModel(application: Application) : AndroidViewModel(applicati
       inlineDictationTarget = _inlineDictationTarget.value,
       vaultFilter = _vaultFilter.value,
       vaultSearchQuery = _vaultSearchQuery.value,
+
+      // Episodic Memory Ingestion State
+      episodicMemories = db.episodicMemories,
+      isIngestingEpisodic = _isIngestingEpisodic.value,
+      episodicIngestStage = _episodicIngestStage.value,
+      episodicSearchQuery = _episodicSearchQuery.value,
+      selectedLifeStageFilter = _selectedLifeStageFilter.value,
+      selectedValenceFilter = _selectedValenceFilter.value,
+      selectedEpisodicMemory = _selectedEpisodicMemory.value,
+      probingGapQuestion = _probingGapQuestion.value,
+      probeAnswerText = _probeAnswerText.value,
+      isProbingLoading = _isProbingLoading.value,
+      episodicInputText = _episodicInputText.value,
+      episodicImageDesc = _episodicImageDesc.value,
+
+      // Interactive Memory Exploration Guide State
+      isGuideSessionActive = _isGuideSessionActive.value,
+      guideConversationMessages = _guideConversationMessages.value,
+      isGuideThinking = _isGuideThinking.value,
+      isGuideSpeaking = wispr.sub3.isSpeaking || liveAudioStreamManager.isPlaying.value,
+      isGuideTtsEnabled = _isGuideTtsEnabled.value,
+      guideInputText = _guideInputText.value,
+      activeExploringMemory = _activeExploringMemory.value,
+
+      // Phase 4: Gemini Multimodal Live API UI State
+      isLiveMultimodalActive = _isLiveMultimodalActive.value,
+      selectedLiveVoice = _selectedLiveVoice.value,
+      liveConnectionStatus = geminiLiveClient.connectionStatus.value,
+      liveMetrics = geminiLiveClient.liveMetrics.value,
+      liveStatusMessage = geminiLiveClient.statusMessage.value,
+      liveMicAmplitude = liveAudioStreamManager.micAmplitude.value,
+      liveSpeakerAmplitude = liveAudioStreamManager.speakerAmplitude.value,
+      isLiveBargeInActive = liveAudioStreamManager.isBargeInActive.value,
+      isLiveRecordingMic = liveAudioStreamManager.isRecording.value,
+      isLivePlayingSpeaker = liveAudioStreamManager.isPlaying.value,
 
       activeTab = nav.activeTab,
       todayHours = computedTodayHours,
@@ -824,6 +1016,16 @@ class ContextLogViewModel(application: Application) : AndroidViewModel(applicati
           }
         }
 
+        // 4. Auto-update 2-hour executive rollup for immediate report generation
+        try {
+          val now = System.currentTimeMillis()
+          val twoHoursMs = 2 * 60 * 60 * 1000L
+          val blockStart = (now / twoHoursMs) * twoHoursMs
+          repository.generateAndSaveRollup(blockStart)
+        } catch (e: Exception) {
+          android.util.Log.w("ContextLogViewModel", "Auto-rollup generation notice", e)
+        }
+
         _toastMessage.value = RoutingToast(
           message = "Note, tasks & event saved to Vault",
           noteTitle = noteTitle,
@@ -832,8 +1034,8 @@ class ContextLogViewModel(application: Application) : AndroidViewModel(applicati
         )
         _dictationState.value = DictationState.CONFIRMATION
 
-        // Auto return to IDLE after confirmation
-        delay(2200L)
+        // Allow user sufficient time to review confirmation or switch to Vault
+        delay(6000L)
         if (_dictationState.value == DictationState.CONFIRMATION) {
           _dictationState.value = DictationState.IDLE
           _liveTranscript.value = ""
@@ -848,9 +1050,376 @@ class ContextLogViewModel(application: Application) : AndroidViewModel(applicati
     }
   }
 
+  fun generateExecutiveReportForCurrentBlock() {
+    viewModelScope.launch {
+      val now = System.currentTimeMillis()
+      val twoHoursMs = 2 * 60 * 60 * 1000L
+      val blockStart = (now / twoHoursMs) * twoHoursMs
+      try {
+        repository.generateAndSaveRollup(blockStart)
+        _vaultFilter.value = VaultFilter.REPORTS
+      } catch (e: Exception) {
+        android.util.Log.e("ContextLogViewModel", "Error generating executive report", e)
+      }
+    }
+  }
+
   fun deleteCalendarEvent(id: String) {
     viewModelScope.launch {
       repository.deleteCalendarEvent(id)
+    }
+  }
+
+  // Episodic Memory Ingestion Engine Operations
+  fun setEpisodicSearchQuery(query: String) {
+    _episodicSearchQuery.value = query
+  }
+
+  fun setSelectedLifeStageFilter(stage: String?) {
+    _selectedLifeStageFilter.value = if (_selectedLifeStageFilter.value == stage) null else stage
+  }
+
+  fun setSelectedValenceFilter(valence: String?) {
+    _selectedValenceFilter.value = if (_selectedValenceFilter.value == valence) null else valence
+  }
+
+  fun setEpisodicInputText(text: String) {
+    _episodicInputText.value = text
+  }
+
+  fun setEpisodicImageDesc(desc: String) {
+    _episodicImageDesc.value = desc
+  }
+
+  fun selectEpisodicMemory(memory: com.example.data.local.EpisodicMemoryEntity?) {
+    _selectedEpisodicMemory.value = memory
+    _probingGapQuestion.value = null
+    _probeAnswerText.value = ""
+  }
+
+  fun startProbingGap(question: String?) {
+    _probingGapQuestion.value = question
+    _probeAnswerText.value = ""
+  }
+
+  fun setProbeAnswerText(text: String) {
+    _probeAnswerText.value = text
+  }
+
+  fun deleteEpisodicMemory(id: String) {
+    viewModelScope.launch {
+      repository.deleteEpisodicMemory(id)
+      if (_selectedEpisodicMemory.value?.id == id) {
+        _selectedEpisodicMemory.value = null
+      }
+    }
+  }
+
+  fun submitProbeAnswer(memoryId: String, gapQuestion: String, userClarification: String) {
+    if (userClarification.isBlank()) return
+    viewModelScope.launch {
+      _isProbingLoading.value = true
+      try {
+        val updated = repository.resolveEpisodicGap(memoryId, gapQuestion, userClarification)
+        if (updated != null) {
+          _selectedEpisodicMemory.value = updated
+          _probingGapQuestion.value = null
+          _probeAnswerText.value = ""
+        }
+      } catch (e: Exception) {
+        android.util.Log.e("ContextLogViewModel", "Error resolving episodic gap", e)
+      } finally {
+        _isProbingLoading.value = false
+      }
+    }
+  }
+
+  fun ingestEpisodicMemory(text: String? = null, imageDesc: String? = null) {
+    val rawText = text ?: _episodicInputText.value
+    val image = imageDesc ?: _episodicImageDesc.value
+    if (rawText.isBlank() && image.isBlank()) return
+
+    viewModelScope.launch {
+      _isIngestingEpisodic.value = true
+      try {
+        _episodicIngestStage.value = "Temporal Anchoring & Era Mapping..."
+        delay(350)
+        _episodicIngestStage.value = "Entity & Relationship Graphing..."
+        delay(350)
+        _episodicIngestStage.value = "Emotional Profile & Sensory Extraction..."
+        delay(350)
+        _episodicIngestStage.value = "Unresolved Gaps & Semantic Indexing..."
+
+        val nodeEntity = repository.ingestEpisodicMemory(
+          rawText = rawText,
+          imageDescription = image.ifBlank { null }
+        )
+        _selectedEpisodicMemory.value = nodeEntity
+        _episodicInputText.value = ""
+        _episodicImageDesc.value = ""
+      } catch (e: Exception) {
+        android.util.Log.e("ContextLogViewModel", "Error ingesting episodic memory", e)
+      } finally {
+        _isIngestingEpisodic.value = false
+        _episodicIngestStage.value = ""
+      }
+    }
+  }
+
+  // --- Interactive Memory Exploration Guide Operations ---
+
+  fun startMemoryGuideSession(memory: com.example.data.local.EpisodicMemoryEntity? = null) {
+    _activeExploringMemory.value = memory
+    _isGuideSessionActive.value = true
+    _guideConversationMessages.value = emptyList()
+    _guideInputText.value = ""
+
+    viewModelScope.launch {
+      _isGuideThinking.value = true
+      val greeting = repository.generateMemoryGuideGreeting(memory)
+      val initialMsg = MemoryGuideMessage(
+        sender = GuideSender.GUIDE,
+        text = greeting
+      )
+      _guideConversationMessages.value = listOf(initialMsg)
+      _isGuideThinking.value = false
+
+      if (_isGuideTtsEnabled.value) {
+        textToSpeechHelper.speak(greeting)
+      }
+    }
+  }
+
+  fun sendMemoryGuideMessage(userText: String, sensoryCue: String? = null) {
+    if (userText.isBlank() && sensoryCue == null) return
+    val textToSend = userText.ifBlank { sensoryCue ?: "" }
+
+    val userMsg = MemoryGuideMessage(
+      sender = GuideSender.USER,
+      text = textToSend,
+      sensoryFocus = sensoryCue
+    )
+    val currentHistory = _guideConversationMessages.value + userMsg
+    _guideConversationMessages.value = currentHistory
+    _guideInputText.value = ""
+
+    viewModelScope.launch {
+      _isGuideThinking.value = true
+      val executedTools = mutableListOf<com.example.data.ai.ToolCallInfo>()
+      val responseText = repository.conductMemoryGuideTurn(
+        userMessage = textToSend,
+        history = currentHistory,
+        memoryContext = _activeExploringMemory.value,
+        sensoryPromptCue = sensoryCue,
+        onToolExecuted = { toolInfo ->
+          executedTools.add(toolInfo)
+        }
+      )
+      val guideMsg = MemoryGuideMessage(
+        sender = GuideSender.GUIDE,
+        text = responseText,
+        sensoryFocus = sensoryCue,
+        executedTools = executedTools
+      )
+      _guideConversationMessages.value = currentHistory + guideMsg
+      _isGuideThinking.value = false
+
+      if (_isGuideTtsEnabled.value) {
+        textToSpeechHelper.speak(responseText)
+      }
+    }
+  }
+
+  fun triggerSensoryAnchorPrompt(cue: String) {
+    sendMemoryGuideMessage(userText = "", sensoryCue = cue)
+  }
+
+  fun toggleGuideTts() {
+    val newState = !_isGuideTtsEnabled.value
+    _isGuideTtsEnabled.value = newState
+    if (!newState) {
+      textToSpeechHelper.stop()
+    }
+  }
+
+  fun stopGuideSpeaking() {
+    textToSpeechHelper.stop()
+  }
+
+  fun setGuideInputText(text: String) {
+    _guideInputText.value = text
+  }
+
+  fun endMemoryGuideSession() {
+    textToSpeechHelper.stop()
+    stopMultimodalLiveSession()
+    _isGuideSessionActive.value = false
+    _activeExploringMemory.value = null
+    _guideConversationMessages.value = emptyList()
+    _guideInputText.value = ""
+  }
+
+  // --- Phase 4: Gemini Multimodal Live API Operations ---
+
+  fun startMultimodalLiveSession(memory: com.example.data.local.EpisodicMemoryEntity? = null) {
+    _activeExploringMemory.value = memory
+    _isGuideSessionActive.value = true
+    _isLiveMultimodalActive.value = true
+    textToSpeechHelper.stop()
+
+    val contextSummary = if (memory != null) {
+      "- Target Memory ID: ${memory.id}\n- Timeframe: ${memory.timeframeReferenced} (${memory.relativeLifeStage})\n- Narrative: ${memory.narrativeSummary}\n- Sensory anchors: ${memory.getSensoryCuesList().joinToString(", ")}\n- Unresolved gaps: ${memory.getUnresolvedGapsList().joinToString("; ")}"
+    } else null
+
+    geminiLiveClient.connectLiveSession(viewModelScope, contextSummary)
+
+    liveAudioStreamManager.startCapture(viewModelScope) { pcm16k ->
+      geminiLiveClient.sendMicrophonePcmChunk(pcm16k)
+    }
+  }
+
+  fun stopMultimodalLiveSession() {
+    _isLiveMultimodalActive.value = false
+    liveAudioStreamManager.stopCapture()
+    liveAudioStreamManager.flushSpeakerBuffer("Live session stopped")
+    geminiLiveClient.disconnect()
+  }
+
+  fun toggleMultimodalLiveMode() {
+    if (_isLiveMultimodalActive.value) {
+      stopMultimodalLiveSession()
+    } else {
+      startMultimodalLiveSession(_activeExploringMemory.value)
+    }
+  }
+
+  fun setLiveVoice(voiceName: String) {
+    _selectedLiveVoice.value = voiceName
+    geminiLiveClient.setVoice(voiceName)
+  }
+
+  fun setSelectedLiveVoice(voiceName: String) {
+    setLiveVoice(voiceName)
+  }
+
+  fun triggerLiveBargeIn() {
+    liveAudioStreamManager.flushSpeakerBuffer("User manual barge-in trigger")
+  }
+
+  private fun handleLiveToolExecution(functionName: String, args: org.json.JSONObject): org.json.JSONObject {
+    return runBlocking(Dispatchers.IO) {
+      if (functionName == "retrieve_memories") {
+        val query = args.optString("query", "")
+        val timeframe = if (args.has("timeframe")) args.optString("timeframe") else null
+        val entityFilter = if (args.has("entity_filter")) args.optString("entity_filter") else null
+
+        val allMemories = repository.getAllEpisodicMemoriesSync()
+        val queryTerms = query.lowercase().split(Regex("[\\s,]+")).filter { it.length > 2 }
+
+        val matched = allMemories.filter { mem ->
+          val fullText = "${mem.narrativeSummary} ${mem.timeframeReferenced} ${mem.peopleJson} ${mem.locationsJson} ${mem.sensoryCuesJson} ${mem.imageDescription.orEmpty()}".lowercase()
+          val matchesQuery = if (queryTerms.isEmpty()) true else queryTerms.any { term -> fullText.contains(term) }
+          val matchesTime = if (timeframe.isNullOrBlank()) true else fullText.contains(timeframe.lowercase())
+          val matchesEntity = if (entityFilter.isNullOrBlank()) true else fullText.contains(entityFilter.lowercase())
+          matchesQuery && matchesTime && matchesEntity
+        }.ifEmpty {
+          if (entityFilter != null) {
+            allMemories.filter { it.peopleJson.contains(entityFilter, ignoreCase = true) || it.locationsJson.contains(entityFilter, ignoreCase = true) }
+          } else if (timeframe != null) {
+            allMemories.filter { it.timeframeReferenced.contains(timeframe, ignoreCase = true) }
+          } else {
+            allMemories.take(2)
+          }
+        }
+
+        val resultObj = org.json.JSONObject()
+        if (matched.isNotEmpty()) {
+          resultObj.put("status", "success")
+          resultObj.put("found", true)
+          val resultsArray = org.json.JSONArray()
+          for (m in matched.take(3)) {
+            resultsArray.put(org.json.JSONObject().apply {
+              put("memory_id", m.id)
+              put("timeframe", m.timeframeReferenced)
+              put("summary", m.narrativeSummary)
+              put("sensory_cues", org.json.JSONArray(m.getSensoryCuesList()))
+              put("unresolved_gaps", org.json.JSONArray(m.getUnresolvedGapsList()))
+              if (!m.imageDescription.isNullOrBlank()) {
+                put("photo_context", m.imageDescription)
+              }
+            })
+          }
+          resultObj.put("results", resultsArray)
+        } else {
+          resultObj.put("status", "success")
+          resultObj.put("found", false)
+          resultObj.put("message", "No matching memories found in archive for '$query'")
+        }
+        resultObj
+      } else if (functionName == "update_memory_node") {
+        val memoryId = args.optString("memory_id", "")
+        val gapsArray = args.optJSONArray("resolved_gaps")
+        val gapsList = mutableListOf<String>()
+        if (gapsArray != null) {
+          for (i in 0 until gapsArray.length()) {
+            gapsList.add(gapsArray.getString(i))
+          }
+        }
+        val newInsights = args.optString("new_insights", "")
+
+        val existing = repository.getEpisodicMemoryByIdSync(memoryId)
+        if (existing != null) {
+          val currentGaps = existing.getUnresolvedGapsList().toMutableList()
+          currentGaps.removeAll { gap -> gapsList.any { g -> gap.contains(g, ignoreCase = true) } }
+          val updatedSummary = if (newInsights.isNotBlank()) {
+            "${existing.narrativeSummary} [Reflective Insight: $newInsights]"
+          } else existing.narrativeSummary
+
+          val updated = existing.copy(
+            narrativeSummary = updatedSummary,
+            unresolvedGapsJson = org.json.JSONArray(currentGaps).toString()
+          )
+          repository.updateEpisodicMemory(updated)
+        }
+        org.json.JSONObject().apply {
+          put("status", "success")
+          put("updated_id", memoryId)
+          put("message", "Memory node updated with reflective insights.")
+        }
+      } else {
+        org.json.JSONObject().apply {
+          put("status", "error")
+          put("message", "Unknown tool: $functionName")
+        }
+      }
+    }
+  }
+
+  fun saveGuideExplorationAsEnrichedMemory() {
+    val memory = _activeExploringMemory.value ?: return
+    val messages = _guideConversationMessages.value
+    if (messages.isEmpty()) return
+
+    viewModelScope.launch {
+      val userReflections = messages.filter { it.sender == GuideSender.USER }.joinToString(" ") { it.text }
+      if (userReflections.isNotBlank()) {
+        val updated = repository.resolveEpisodicGap(
+          memoryId = memory.id,
+          gapQuestion = "Voice Guide Reflection Insights",
+          userClarification = userReflections
+        )
+        if (updated != null) {
+          _activeExploringMemory.value = updated
+          _selectedEpisodicMemory.value = updated
+        }
+      }
+    }
+  }
+
+  fun seedSampleEpisodicMemoryIfEmpty() {
+    viewModelScope.launch {
+      val existing = repository.allEpisodicMemories
+      // Can be triggered from UI button or initial state
     }
   }
 
@@ -1552,6 +2121,8 @@ class ContextLogViewModel(application: Application) : AndroidViewModel(applicati
     super.onCleared()
     textToSpeechHelper.destroy()
     speechDictationManager.destroy()
+    liveAudioStreamManager.release()
+    geminiLiveClient.disconnect()
   }
 }
 
@@ -1603,7 +2174,8 @@ private data class DbExtras(
   val calendarEvents: List<com.example.data.local.CalendarEventEntity>,
   val tokenMetrics: List<TokenUsageEntity>,
   val actionItems: List<ActionItemEntity>,
-  val briefingDossiers: List<BriefingDossierEntity>
+  val briefingDossiers: List<BriefingDossierEntity>,
+  val episodicMemories: List<com.example.data.local.EpisodicMemoryEntity>
 )
 
 private data class DbState(
@@ -1615,7 +2187,8 @@ private data class DbState(
   val calendarEvents: List<com.example.data.local.CalendarEventEntity> = emptyList(),
   val tokenMetrics: List<TokenUsageEntity> = emptyList(),
   val actionItems: List<ActionItemEntity> = emptyList(),
-  val briefingDossiers: List<BriefingDossierEntity> = emptyList()
+  val briefingDossiers: List<BriefingDossierEntity> = emptyList(),
+  val episodicMemories: List<com.example.data.local.EpisodicMemoryEntity> = emptyList()
 )
 
 private data class BackupCombinedState(

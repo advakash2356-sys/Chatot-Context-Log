@@ -1,7 +1,11 @@
 package com.example.data.repository
 
 import com.example.data.ai.DocumentChunker
+import com.example.data.ai.EpisodicMemoryIngestionEngine
+import com.example.data.ai.EpisodicMemoryNode
 import com.example.data.ai.GeminiService
+import com.example.data.ai.MemoryExplorationGuideEngine
+import com.example.data.ai.MemoryGuideMessage
 import com.example.data.ai.ParsedNoteResult
 import com.example.data.ai.SpatialContextHelper
 import com.example.data.ai.TwoHourRollupResult
@@ -20,6 +24,7 @@ import com.example.data.local.ContextNoteEntity
 import com.example.data.local.DictionaryItemEntity
 import com.example.data.local.DocumentChunkEntity
 import com.example.data.local.DocumentEntity
+import com.example.data.local.EpisodicMemoryEntity
 import com.example.data.local.EntryType
 import com.example.data.local.GroundedCitation
 import com.example.data.local.MatterEntity
@@ -39,6 +44,8 @@ class ContextLogRepository(
     private val calendarService: GoogleCalendarService = GoogleCalendarService(),
     val voiceEngine: VoiceFlowEngine = VoiceFlowEngine(),
     val wisprEngine: VoiceFlowEngine = voiceEngine,
+    val episodicEngine: EpisodicMemoryIngestionEngine = EpisodicMemoryIngestionEngine(),
+    val memoryGuideEngine: MemoryExplorationGuideEngine = MemoryExplorationGuideEngine(),
     val tokenBillingService: TokenBillingService = TokenBillingService(dao)
 ) {
     val allMatters: Flow<List<MatterEntity>> = dao.getAllMatters()
@@ -47,6 +54,7 @@ class ContextLogRepository(
     val pendingActionItems: Flow<List<ActionItemEntity>> = dao.getPendingActionItems()
     val actionItemsAssignedToYou: Flow<List<ActionItemEntity>> = dao.getActionItemsAssignedToYou()
     val allBriefingDossiers: Flow<List<BriefingDossierEntity>> = dao.getAllBriefingDossiers()
+    val allEpisodicMemories: Flow<List<EpisodicMemoryEntity>> = dao.getAllEpisodicMemories()
     val allBlockStarts: Flow<List<Long>> = dao.getAllBlockStarts()
     val allRollups: Flow<List<TwoHourRollupEntity>> = dao.getAllRollups()
     val allDocuments: Flow<List<DocumentEntity>> = dao.getAllDocuments()
@@ -561,6 +569,136 @@ Keep it strictly factual, professional, and actionable.
 
     suspend fun deleteBriefingDossier(id: String) = withContext(Dispatchers.IO) {
         dao.deleteBriefingDossier(id)
+    }
+
+    // Episodic Memory Ingestion Engine Operations
+    suspend fun ingestEpisodicMemory(
+        rawText: String,
+        imageDescription: String? = null,
+        audioPath: String? = null
+    ): EpisodicMemoryEntity = withContext(Dispatchers.IO) {
+        val memoryEntity = episodicEngine.ingestMemory(
+            rawInputText = rawText,
+            imageDescription = imageDescription,
+            audioPath = audioPath
+        )
+        dao.insertEpisodicMemory(memoryEntity)
+        memoryEntity
+    }
+
+    suspend fun resolveEpisodicGap(
+        memoryId: String,
+        gapQuestion: String,
+        userClarification: String
+    ): EpisodicMemoryEntity? = withContext(Dispatchers.IO) {
+        val existing = dao.getEpisodicMemoryById(memoryId).first() ?: return@withContext null
+        val updated = episodicEngine.resolveGapAndEnrichMemory(
+            existingEntity = existing,
+            gapQuestion = gapQuestion,
+            userClarification = userClarification
+        )
+        dao.updateEpisodicMemory(updated)
+        updated
+    }
+
+    suspend fun deleteEpisodicMemory(id: String) = withContext(Dispatchers.IO) {
+        dao.deleteEpisodicMemory(id)
+    }
+
+    suspend fun getAllEpisodicMemoriesSync(): List<EpisodicMemoryEntity> = withContext(Dispatchers.IO) {
+        dao.getAllEpisodicMemoriesSync()
+    }
+
+    suspend fun getEpisodicMemoryByIdSync(id: String): EpisodicMemoryEntity? = withContext(Dispatchers.IO) {
+        dao.getEpisodicMemoryByIdSync(id)
+    }
+
+    suspend fun updateEpisodicMemory(memory: EpisodicMemoryEntity) = withContext(Dispatchers.IO) {
+        dao.updateEpisodicMemory(memory)
+    }
+
+    suspend fun insertEpisodicMemory(memory: EpisodicMemoryEntity) = withContext(Dispatchers.IO) {
+        dao.insertEpisodicMemory(memory)
+    }
+
+    // Interactive Memory Exploration Guide Operations
+    suspend fun conductMemoryGuideTurn(
+        userMessage: String,
+        history: List<MemoryGuideMessage> = emptyList(),
+        memoryContext: EpisodicMemoryEntity? = null,
+        sensoryPromptCue: String? = null,
+        onToolExecuted: ((com.example.data.ai.ToolCallInfo) -> Unit)? = null
+    ): String = withContext(Dispatchers.IO) {
+        memoryGuideEngine.conductExplorationTurn(
+            userMessage = userMessage,
+            conversationHistory = history,
+            memoryContext = memoryContext,
+            sensoryPromptCue = sensoryPromptCue,
+            onRetrieveMemories = { query, timeframe, entityFilter ->
+                val allMemories = dao.getAllEpisodicMemoriesSync()
+                val queryTerms = query.lowercase().split(Regex("[\\s,]+")).filter { it.length > 2 }
+                
+                val matched = allMemories.filter { mem ->
+                    val fullText = "${mem.narrativeSummary} ${mem.timeframeReferenced} ${mem.peopleJson} ${mem.locationsJson} ${mem.sensoryCuesJson} ${mem.imageDescription.orEmpty()}".lowercase()
+                    val matchesQuery = if (queryTerms.isEmpty()) true else queryTerms.any { term -> fullText.contains(term) }
+                    val matchesTime = if (timeframe.isNullOrBlank()) true else fullText.contains(timeframe.lowercase())
+                    val matchesEntity = if (entityFilter.isNullOrBlank()) true else fullText.contains(entityFilter.lowercase())
+                    matchesQuery && matchesTime && matchesEntity
+                }.ifEmpty {
+                    if (entityFilter != null) {
+                        allMemories.filter { it.peopleJson.contains(entityFilter, ignoreCase = true) || it.locationsJson.contains(entityFilter, ignoreCase = true) }
+                    } else if (timeframe != null) {
+                        allMemories.filter { it.timeframeReferenced.contains(timeframe, ignoreCase = true) }
+                    } else {
+                        allMemories.take(2)
+                    }
+                }
+
+                val resultObj = org.json.JSONObject()
+                if (matched.isNotEmpty()) {
+                    val primary = matched.first()
+                    resultObj.put("found", true)
+                    resultObj.put("memory_id", primary.id)
+                    resultObj.put("summary", primary.narrativeSummary)
+                    resultObj.put("timeframe", primary.timeframeReferenced)
+                    resultObj.put("people", org.json.JSONArray(primary.getPeopleList()))
+                    resultObj.put("locations", org.json.JSONArray(primary.getLocationsList()))
+                    resultObj.put("sensory_cues", org.json.JSONArray(primary.getSensoryCuesList()))
+                    if (!primary.imageDescription.isNullOrBlank()) {
+                        resultObj.put("photo_description", primary.imageDescription)
+                    }
+                } else {
+                    resultObj.put("found", false)
+                    resultObj.put("message", "No matching memories found in archive.")
+                }
+                resultObj
+            },
+            onUpdateMemory = { memId, gaps, insights ->
+                val existing = dao.getEpisodicMemoryByIdSync(memId)
+                if (existing != null) {
+                    val currentGaps = existing.getUnresolvedGapsList().toMutableList()
+                    currentGaps.removeAll { gap -> gaps.any { g -> gap.contains(g, ignoreCase = true) } }
+                    val updatedSummary = if (insights.isNotBlank()) {
+                        "${existing.narrativeSummary} [Reflective Insight: $insights]"
+                    } else existing.narrativeSummary
+
+                    val updated = existing.copy(
+                        narrativeSummary = updatedSummary,
+                        unresolvedGapsJson = org.json.JSONArray(currentGaps).toString()
+                    )
+                    dao.updateEpisodicMemory(updated)
+                }
+                org.json.JSONObject().apply {
+                    put("status", "success")
+                    put("memory_id", memId)
+                }
+            },
+            onToolExecuted = onToolExecuted
+        )
+    }
+
+    suspend fun generateMemoryGuideGreeting(memoryContext: EpisodicMemoryEntity?): String = withContext(Dispatchers.IO) {
+        memoryGuideEngine.generateInitialGreeting(memoryContext)
     }
 
     // Spatial Context Export Prompt Builder

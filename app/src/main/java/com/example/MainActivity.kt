@@ -28,6 +28,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.screens.CaptureScreen
+import com.example.ui.screens.EpisodicMemoryScreen
 import com.example.ui.screens.VaultScreen
 import com.example.ui.theme.ContextLogTheme
 import com.example.ui.theme.MonoBackground
@@ -98,6 +99,7 @@ fun ContextLogApp(viewModel: ContextLogViewModel = viewModel()) {
                 micAmplitude = uiState.micAmplitude,
                 toastMessage = uiState.toastMessage,
                 vaultItemCount = uiState.notes.size + uiState.actionItems.size + uiState.calendarEvents.size,
+                episodicItemCount = uiState.episodicMemories.size,
                 inlineDictationTarget = uiState.inlineDictationTarget,
                 onStartListening = {
                   if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
@@ -111,6 +113,7 @@ fun ContextLogApp(viewModel: ContextLogViewModel = viewModel()) {
                 onUpdateVerifiedText = { viewModel.updateVerifiedTranscript(it) },
                 onSaveAndProcess = { viewModel.saveAndProcessDictation(it) },
                 onNavigateToVault = { viewModel.setActiveView(MainAppView.VAULT) },
+                onNavigateToEpisodic = { viewModel.setActiveView(MainAppView.EPISODIC) },
                 onStartInlineDictation = { targetId, currentText, onUpdate ->
                   if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                     viewModel.startInlineFieldDictation(targetId, currentText, onUpdate)
@@ -127,6 +130,8 @@ fun ContextLogApp(viewModel: ContextLogViewModel = viewModel()) {
                 notes = uiState.notes,
                 actionItems = uiState.actionItems,
                 calendarEvents = uiState.calendarEvents,
+                rollups = uiState.rollups,
+                episodicItemCount = uiState.episodicMemories.size,
                 currentFilter = uiState.vaultFilter,
                 searchQuery = uiState.vaultSearchQuery,
                 inlineDictationTarget = uiState.inlineDictationTarget,
@@ -136,7 +141,75 @@ fun ContextLogApp(viewModel: ContextLogViewModel = viewModel()) {
                 onDeleteNote = { viewModel.deleteNote(it) },
                 onDeleteTask = { viewModel.deleteTask(it) },
                 onDeleteCalendarEvent = { viewModel.deleteCalendarEvent(it) },
+                onGenerateReport = { viewModel.generateExecutiveReportForCurrentBlock() },
                 onNavigateToCapture = { viewModel.setActiveView(MainAppView.CAPTURE) },
+                onNavigateToEpisodic = { viewModel.setActiveView(MainAppView.EPISODIC) },
+                onStartInlineDictation = { targetId, currentText, onUpdate ->
+                  if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                    viewModel.startInlineFieldDictation(targetId, currentText, onUpdate)
+                  } else {
+                    audioPermissionLauncher.launch(arrayOf(Manifest.permission.RECORD_AUDIO))
+                  }
+                },
+                onStopInlineDictation = { viewModel.stopInlineFieldDictation() }
+              )
+            }
+
+            MainAppView.EPISODIC -> {
+              EpisodicMemoryScreen(
+                memories = uiState.episodicMemories,
+                vaultItemCount = uiState.notes.size + uiState.actionItems.size + uiState.calendarEvents.size,
+                isIngesting = uiState.isIngestingEpisodic,
+                ingestStage = uiState.episodicIngestStage,
+                searchQuery = uiState.episodicSearchQuery,
+                selectedLifeStageFilter = uiState.selectedLifeStageFilter,
+                selectedValenceFilter = uiState.selectedValenceFilter,
+                selectedMemory = uiState.selectedEpisodicMemory,
+                probingGapQuestion = uiState.probingGapQuestion,
+                probeAnswerText = uiState.probeAnswerText,
+                isProbingLoading = uiState.isProbingLoading,
+                inputText = uiState.episodicInputText,
+                imageDesc = uiState.episodicImageDesc,
+                inlineDictationTarget = uiState.inlineDictationTarget,
+                isGuideSessionActive = uiState.isGuideSessionActive,
+                guideMessages = uiState.guideConversationMessages,
+                isGuideThinking = uiState.isGuideThinking,
+                isGuideSpeaking = uiState.isGuideSpeaking,
+                isGuideTtsEnabled = uiState.isGuideTtsEnabled,
+                guideInputText = uiState.guideInputText,
+                activeExploringMemory = uiState.activeExploringMemory,
+                isLiveMultimodalActive = uiState.isLiveMultimodalActive,
+                selectedLiveVoice = uiState.selectedLiveVoice,
+                liveConnectionStatus = uiState.liveConnectionStatus,
+                liveMetrics = uiState.liveMetrics,
+                liveMicAmplitude = uiState.liveMicAmplitude,
+                liveSpeakerAmplitude = uiState.liveSpeakerAmplitude,
+                onToggleLiveMode = { viewModel.toggleMultimodalLiveMode() },
+                onSelectLiveVoice = { viewModel.setSelectedLiveVoice(it) },
+                onTriggerLiveBargeIn = { viewModel.triggerLiveBargeIn() },
+                onStartGuideSession = { viewModel.startMemoryGuideSession(it) },
+                onSendGuideMessage = { text, cue -> viewModel.sendMemoryGuideMessage(text, cue) },
+                onTriggerSensoryAnchor = { viewModel.triggerSensoryAnchorPrompt(it) },
+                onToggleGuideTts = { viewModel.toggleGuideTts() },
+                onStopGuideSpeaking = { viewModel.stopGuideSpeaking() },
+                onGuideInputChange = { viewModel.setGuideInputText(it) },
+                onEndGuideSession = { viewModel.endMemoryGuideSession() },
+                onSaveGuideExploration = { viewModel.saveGuideExplorationAsEnrichedMemory() },
+                onNavigateToCapture = { viewModel.setActiveView(MainAppView.CAPTURE) },
+                onNavigateToVault = { viewModel.setActiveView(MainAppView.VAULT) },
+                onSearchQueryChange = { viewModel.setEpisodicSearchQuery(it) },
+                onSelectLifeStageFilter = { viewModel.setSelectedLifeStageFilter(it) },
+                onSelectValenceFilter = { viewModel.setSelectedValenceFilter(it) },
+                onInputTextChange = { viewModel.setEpisodicInputText(it) },
+                onImageDescChange = { viewModel.setEpisodicImageDesc(it) },
+                onIngestMemory = { text, image -> viewModel.ingestEpisodicMemory(text, image) },
+                onSelectMemory = { viewModel.selectEpisodicMemory(it) },
+                onStartProbingGap = { viewModel.startProbingGap(it) },
+                onProbeAnswerChange = { viewModel.setProbeAnswerText(it) },
+                onSubmitProbeAnswer = { memId, question, ans ->
+                  viewModel.submitProbeAnswer(memId, question, ans)
+                },
+                onDeleteMemory = { viewModel.deleteEpisodicMemory(it) },
                 onStartInlineDictation = { targetId, currentText, onUpdate ->
                   if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                     viewModel.startInlineFieldDictation(targetId, currentText, onUpdate)

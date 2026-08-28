@@ -19,9 +19,10 @@ import androidx.room.RoomDatabase
         NoteEmbeddingEntity::class,
         TokenUsageEntity::class,
         ActionItemEntity::class,
-        BriefingDossierEntity::class
+        BriefingDossierEntity::class,
+        EpisodicMemoryEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

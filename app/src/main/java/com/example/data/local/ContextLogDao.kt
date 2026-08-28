@@ -254,4 +254,26 @@ interface ContextLogDao {
 
     @Query("DELETE FROM briefing_dossiers WHERE id = :id")
     suspend fun deleteBriefingDossier(id: String)
+
+    // Episodic Memories
+    @Query("SELECT * FROM episodic_memories ORDER BY timestampRecorded DESC")
+    fun getAllEpisodicMemories(): Flow<List<EpisodicMemoryEntity>>
+
+    @Query("SELECT * FROM episodic_memories ORDER BY timestampRecorded DESC")
+    suspend fun getAllEpisodicMemoriesSync(): List<EpisodicMemoryEntity>
+
+    @Query("SELECT * FROM episodic_memories WHERE id = :id LIMIT 1")
+    fun getEpisodicMemoryById(id: String): Flow<EpisodicMemoryEntity?>
+
+    @Query("SELECT * FROM episodic_memories WHERE id = :id LIMIT 1")
+    suspend fun getEpisodicMemoryByIdSync(id: String): EpisodicMemoryEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertEpisodicMemory(memory: EpisodicMemoryEntity)
+
+    @Update
+    suspend fun updateEpisodicMemory(memory: EpisodicMemoryEntity)
+
+    @Query("DELETE FROM episodic_memories WHERE id = :id")
+    suspend fun deleteEpisodicMemory(id: String)
 }
