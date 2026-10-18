@@ -22,7 +22,9 @@ No keys are committed to this repo. To enable the AI features:
 3. Rebuild in Android Studio. The Secrets Gradle plugin exposes it as `BuildConfig.GEMINI_API_KEY`. Without a key the app uses its offline fallbacks.
 4. For Firebase sign-in, add your own `app/google-services.json` (git-ignored) and replace the placeholder in `AuthManager.kt`.
 
-> A Firebase web key was previously committed in git history and must be rotated/restricted in the Google Cloud console.
+**Privacy:** the key stays in your own `.env` / build, is never committed or logged, and is sent only to Google's Gemini API. Delete it and rebuild to remove it. There is no in-app key screen yet (Android can't be built in this environment); that is a planned follow-up.
+
+> Git history was cleaned (Oct 2026) of the earlier Firebase config; restrict your own Firebase key by app/package in the Google Cloud console as good practice.
 
 ## Tech Stack
 
