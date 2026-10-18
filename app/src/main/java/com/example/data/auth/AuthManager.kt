@@ -45,7 +45,7 @@ class AuthManager(private val context: Context) {
                 val options = FirebaseOptions.Builder()
                     .setApplicationId(context.packageName)
                     .setProjectId("spatial-context-notes")
-                    .setApiKey("AIzaSySpatialContextLocalFallback")
+                    .setApiKey("REPLACE_WITH_YOUR_FIREBASE_API_KEY")
                     .build()
                 FirebaseApp.initializeApp(context, options)
             } else {

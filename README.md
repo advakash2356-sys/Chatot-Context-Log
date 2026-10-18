@@ -13,6 +13,17 @@ Chatot Context voice king — a voice-first episodic memory, context logging, an
 - **Data Synchronization:** Cloud backup manager and background sync workers.
 - **User Interface:** Screens and tabs for Dashboard, Voice-First Capture, Capture, Logs, Tasks, Vault, Memories, Episodic Memory, Flow Studio, Billing, Settings, and Ask Query.
 
+## Add your own API keys
+
+No keys are committed to this repo. To enable the AI features:
+
+1. Copy `.env.example` to `.env` in the project root (it is git-ignored).
+2. Set `GEMINI_API_KEY=<your key from https://aistudio.google.com/apikey>`.
+3. Rebuild in Android Studio. The Secrets Gradle plugin exposes it as `BuildConfig.GEMINI_API_KEY`. Without a key the app uses its offline fallbacks.
+4. For Firebase sign-in, add your own `app/google-services.json` (git-ignored) and replace the placeholder in `AuthManager.kt`.
+
+> A Firebase web key was previously committed in git history and must be rotated/restricted in the Google Cloud console.
+
 ## Tech Stack
 
 - **Language & Platform:** Kotlin, Android
